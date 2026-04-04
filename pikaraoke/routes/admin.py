@@ -15,7 +15,12 @@ from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
 from pikaraoke.karaoke import Karaoke
-from pikaraoke.lib.current_app import get_admin_password, get_karaoke_instance, is_admin
+from pikaraoke.lib.current_app import (
+    broadcast_event,
+    get_admin_password,
+    get_karaoke_instance,
+    is_admin,
+)
 from pikaraoke.lib.youtube_dl import get_youtubedl_version, upgrade_youtubedl
 
 _ = flask_babel.gettext
@@ -79,6 +84,23 @@ def refresh():
         # MSG: Message shown after trying to refresh the song list without admin permissions.
         flash(_("You don't have permission to refresh the song list"), "is-danger")
     return redirect(url_for("files.browse"))
+
+
+@admin_bp.route("/reset_session")
+def reset_session():
+    """Reset the KTV session (clear queue, scores, history, timer)."""
+    k = get_karaoke_instance()
+    if is_admin():
+        # Show session summary on splash before resetting
+        summary = k.get_session_summary()
+        if summary["total_songs"] > 0:
+            broadcast_event("session_summary", summary)
+        k.reset_session()
+        broadcast_event("queue_update")
+        flash(_("New session started!"), "is-success")
+    else:
+        flash(_("You don't have permission"), "is-danger")
+    return redirect(url_for("queue.queue"))
 
 
 @admin_bp.route("/quit")

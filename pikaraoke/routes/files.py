@@ -57,7 +57,17 @@ class EditFileForm(Schema):
 
 @files_bp.route("/browse", methods=["GET"])
 def browse():
-    """Browse available songs page."""
+    """Browse available songs page — redirects to songpicker."""
+    from flask import redirect, url_for
+
+    # Preserve query parameters in redirect
+    args = request.args.to_dict()
+    return redirect(url_for("songpicker.songpicker", **args))
+
+
+@files_bp.route("/browse_legacy", methods=["GET"])
+def browse_legacy():
+    """Legacy browse page (kept for backwards compat)."""
     k = get_karaoke_instance()
     site_name = get_site_name()
     search = False

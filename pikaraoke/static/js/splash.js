@@ -141,7 +141,23 @@ const endSong = async (reason = null, showScore = false) => {
   if (nowPlaying.up_next) {
     $("#transition-singer-name").text(nowPlaying.next_user || "");
     $("#transition-song-name").text(nowPlaying.up_next);
-    $("#transition-screen").fadeIn(600);
+    $("#transition-screen").css("transform", "scale(0.9)").fadeIn(600).animate({opacity: 1}, {
+      step: function() { $(this).css("transform", "scale(1)"); }, duration: 400
+    });
+    // Countdown timer
+    var delay = PikaraokeConfig.splashDelay || 2;
+    var remaining = delay;
+    $("#transition-countdown").text("Starting in " + remaining + "s...");
+    if (window._transCountdown) clearInterval(window._transCountdown);
+    window._transCountdown = setInterval(function() {
+      remaining--;
+      if (remaining > 0) {
+        $("#transition-countdown").text("Starting in " + remaining + "s...");
+      } else {
+        $("#transition-countdown").text("Preparing...");
+        clearInterval(window._transCountdown);
+      }
+    }, 1000);
   }
   if (hlsInstance) {
     hlsInstance.destroy();
@@ -593,6 +609,10 @@ const PREFERENCE_EFFECTS = {
     screensaverTimeoutSeconds = v;
     PikaraokeConfig.screensaverTimeout = v;
   },
+  splash_theme: (v) => {
+    document.body.className = document.body.className.replace(/theme-\S+/g, "");
+    if (v && v !== "classic") document.body.classList.add("theme-" + v);
+  },
 };
 
 const parsePreferenceValue = (value) => {
@@ -703,6 +723,29 @@ const setupSocketEvents = () => {
 
   socket.on("hide_leaderboard", () => {
     $("#leaderboard-screen").fadeOut(400);
+  });
+
+  socket.on("session_summary", (data) => {
+    $("#summary-songs").text(data.total_songs || 0);
+    var secs = data.elapsed_seconds || 0;
+    var h = Math.floor(secs / 3600);
+    var m = Math.floor((secs % 3600) / 60);
+    $("#summary-duration").text(h > 0 ? h + "h " + m + "m" : m + " min");
+    $("#summary-singers").text(data.total_singers || 0);
+    if (data.most_active_singer) {
+      $("#summary-mvp").text(data.most_active_singer);
+      $("#summary-mvp-row").show();
+    }
+    if (data.top_scorer) {
+      $("#summary-top-scorer").text(data.top_scorer);
+      $("#summary-top-scorer-row").show();
+    }
+    if (data.most_played_song) {
+      $("#summary-hit-song").text(data.most_played_song);
+      $("#summary-hit-row").show();
+    }
+    $("#session-summary-screen").fadeIn(600);
+    setTimeout(function() { $("#session-summary-screen").fadeOut(800); }, 12000);
   });
 
   socket.on("playback_position", (position) => {

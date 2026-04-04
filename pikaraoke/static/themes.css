@@ -1,0 +1,44 @@
+/* Splash screen theme variants */
+
+/* Classic (default) - dark background */
+body.theme-classic {
+    background: #111;
+}
+
+/* Party - animated gradient */
+body.theme-party {
+    background: linear-gradient(-45deg, #1a0533, #0d1b2a, #1b2838, #2d1b4e);
+    background-size: 400% 400%;
+    animation: party-gradient 15s ease infinite;
+}
+@keyframes party-gradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Romantic - warm tones */
+body.theme-romantic {
+    background: linear-gradient(135deg, #1a0a0a, #2d1515, #1a0d0a);
+}
+body.theme-romantic #now-playing-overlay,
+body.theme-romantic #up-next-container {
+    color: #ffd6d6;
+}
+body.theme-romantic .timestamp {
+    color: #ffb3b3;
+}
+
+/* Neon - cyberpunk */
+body.theme-neon {
+    background: #0a0014;
+}
+body.theme-neon #now-playing-overlay {
+    text-shadow: 0 0 8px #7c3aed, 0 0 20px rgba(124, 58, 237, 0.3);
+}
+body.theme-neon #up-next-container {
+    text-shadow: 0 0 6px #06b6d4, 0 0 15px rgba(6, 182, 212, 0.3);
+}
+body.theme-neon #progress-bar-fill {
+    background: linear-gradient(90deg, #7c3aed, #06b6d4) !important;
+}

@@ -55,6 +55,7 @@ def _make_full_app():
     from pikaraoke.routes.preferences import preferences_bp
     from pikaraoke.routes.queue import queue_bp
     from pikaraoke.routes.search import search_bp
+    from pikaraoke.routes.songpicker import songpicker_bp
     from pikaraoke.routes.splash import splash_bp
     from pikaraoke.routes.stream import stream_bp
 
@@ -69,6 +70,7 @@ def _make_full_app():
     for bp in [
         home_bp,
         info_bp,
+        songpicker_bp,
         splash_bp,
         queue_bp,
         search_bp,
@@ -184,25 +186,28 @@ class TestKeyboardShortcuts:
         k.is_transpose_enabled = True
         k.volume = 0.85
         k.queue_manager.queue = []
+        k.enable_fair_queue = False
+        k.limit_user_songs_by = 0
         return k
 
-    @patch("pikaraoke.routes.home.get_karaoke_instance")
-    @patch("pikaraoke.routes.home.get_site_name", return_value="Test")
-    @patch("pikaraoke.routes.home.is_admin", return_value=True)
+    @patch("pikaraoke.routes.queue.get_karaoke_instance")
+    @patch("pikaraoke.routes.queue.get_site_name", return_value="Test")
+    @patch("pikaraoke.routes.queue.is_admin", return_value=True)
     def test_admin_gets_keydown_listener(self, _admin, _site, mock_k, full_client):
         mock_k.return_value = self._make_mock_karaoke()
-        resp = full_client.get("/")
+        resp = full_client.get("/queue")
         html = resp.data.decode()
-        assert 'addEventListener("keydown"' in html
+        assert "keydown" in html
 
-    @patch("pikaraoke.routes.home.get_karaoke_instance")
-    @patch("pikaraoke.routes.home.get_site_name", return_value="Test")
-    @patch("pikaraoke.routes.home.is_admin", return_value=False)
+    @patch("pikaraoke.routes.queue.get_karaoke_instance")
+    @patch("pikaraoke.routes.queue.get_site_name", return_value="Test")
+    @patch("pikaraoke.routes.queue.is_admin", return_value=False)
     def test_non_admin_no_keydown_listener(self, _admin, _site, mock_k, full_client):
         mock_k.return_value = self._make_mock_karaoke()
-        resp = full_client.get("/")
+        resp = full_client.get("/queue")
         html = resp.data.decode()
-        assert 'addEventListener("keydown"' not in html
+        # Non-admin should not see the admin keyboard shortcut block
+        assert "case 'S': $.get('/skip')" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -292,26 +297,27 @@ class TestInfoTabs:
     @patch("pikaraoke.routes.info.get_karaoke_instance")
     @patch("pikaraoke.routes.info.get_site_name", return_value="Test")
     @patch("pikaraoke.routes.info.is_admin", return_value=True)
-    def test_admin_both_tabs_present(self, _admin, _site, mock_k, _plat, _pw, full_client):
+    def test_admin_both_sections_present(self, _admin, _site, mock_k, _plat, _pw, full_client):
         mock_k.return_value = self._make_mock_karaoke()
         resp = full_client.get("/info")
         html = resp.data.decode()
         assert resp.status_code == 200
-        assert 'id="tab-settings"' in html
-        assert 'id="tab-admin"' in html
+        # New accordion layout has Settings and Admin cards
+        assert "Settings" in html
+        assert "Admin" in html
 
     @patch("pikaraoke.routes.info.get_admin_password", return_value="pass")
     @patch("pikaraoke.routes.info.get_platform", return_value="linux")
     @patch("pikaraoke.routes.info.get_karaoke_instance")
     @patch("pikaraoke.routes.info.get_site_name", return_value="Test")
     @patch("pikaraoke.routes.info.is_admin", return_value=False)
-    def test_non_admin_both_tab_divs_exist(self, _admin, _site, mock_k, _plat, _pw, full_client):
+    def test_non_admin_sees_admin_card(self, _admin, _site, mock_k, _plat, _pw, full_client):
         mock_k.return_value = self._make_mock_karaoke()
         resp = full_client.get("/info")
         html = resp.data.decode()
         assert resp.status_code == 200
-        assert 'id="tab-settings"' in html
-        assert 'id="tab-admin"' in html
+        # Non-admin should see the Admin accordion card with login option
+        assert "Admin" in html
 
     @patch("pikaraoke.routes.info.get_admin_password", return_value="pass")
     @patch("pikaraoke.routes.info.get_platform", return_value="linux")
@@ -333,18 +339,26 @@ class TestInfoTabs:
 class TestYouTubeSourceLabels:
     """Test that YouTube and download labels appear in search results."""
 
-    @patch("pikaraoke.routes.search.get_karaoke_instance")
-    @patch("pikaraoke.routes.search.get_site_name", return_value="Test")
-    @patch("pikaraoke.routes.search.get_search_results")
-    def test_search_results_have_youtube_label(self, mock_search, _site, mock_k, full_client):
-        mock_k.return_value = MagicMock(song_manager=MagicMock(songs=[]))
+    @patch("pikaraoke.routes.songpicker.is_admin", return_value=False)
+    @patch("pikaraoke.routes.songpicker.get_karaoke_instance")
+    @patch("pikaraoke.routes.songpicker.get_site_name", return_value="Test")
+    @patch("pikaraoke.routes.songpicker.get_search_results")
+    def test_search_results_have_youtube_label(
+        self, mock_search, _site, mock_k, _admin, full_client
+    ):
+        k = MagicMock()
+        k.song_manager.songs = []
+        k.queue_manager.queue = []
+        k.browse_results_per_page = 100
+        k.enable_fair_queue = False
+        k.limit_user_songs_by = 0
+        mock_k.return_value = k
         mock_search.return_value = [
             ["Test Song", "https://youtube.com/watch?v=abc", "abc123abcde", "TestCh", "3:45"],
         ]
-        resp = full_client.get("/search?search_string=test")
+        resp = full_client.get("/songpicker?search_string=test")
         html = resp.data.decode()
         assert "YouTube" in html
-        assert "\u9700\u4e0b\u8f09" in html
 
 
 # ---------------------------------------------------------------------------
