@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block scripts %}
+<script>
+  $(function () {
+
+    $('#remove-karaoke').click(function (e) {
+      var filename = $('#new_file_name').val();
+      if (!$.trim(filename)) return;
+      $.getJSON('/metadata/tidy-name', { filename: filename }, function (data) {
+        if (data.tidied) {
+          $('#new_file_name').val(data.tidied);
+        }
+      });
+    });
+
+    $('#suggest-title').click(function (e) {
+      var filename = $.trim($('#new_file_name').val());
+      if (!filename) return;
+      $('.suggest_loader').removeClass("is-hidden");
+      $("#suggest_results").html("");
+      $.getJSON('/metadata/suggest-names', { filename: filename, limit: 5 }, function (data) {
+        var suggestions = "";
+        if (data.suggestions && data.suggestions.length > 0) {
+          $.each(data.suggestions, function (i, item) {
+            suggestions += "<li><a class='suggested_item is-warning'>" + item.name + " - " + item.artist + "</a></li>";
+          });
+        } else {
+          // {# MSG: Warning when no suggested tracks are found for a search. #}
+          suggestions = "<li>{{ _('No suggestion!') }}</li>";
+        }
+        $("#suggest_results").html("<ul>" + suggestions + "</ul>");
+      }).always(function () {
+        $('.suggest_loader').addClass("is-hidden");
+      });
+    });
+
+    $('#swap-order').click(function (e) {
+      var split_name = $('#new_file_name').val().split(' - ');
+      var new_name = split_name[1] + " - " + split_name[0];
+      new_name = new_name.trim();
+      $('#new_file_name').val(new_name);
+    });
+
+    $("#suggest_results").on("click", ".suggested_item", function () {
+      $('#new_file_name').val($(this).text());
+    });
+
+  });
+</script>
+{% endblock %}
+
+{% block header %}
+{# MSG: Page title for the page where a song can be edited. #}
+<h1>{% block title %}{% trans %}Edit Song{% endtrans %}{% endblock %}</h1>
+{% endblock %}
+
+{% block content %}
+
+
+<div class="field">
+  <form action="{{ url_for('files.edit_file') }}" method="post">
+    <div class="field">
+      <p class='has-text-warning'>{{ filename_from_path(song) }} </p>
+    </div>
+    <input value="{{ song }}" type="hidden" name='old_file_name'>
+    <input type="hidden" name="referrer" value="{{ referrer }}">
+    {# MSG: Label on the control to edit the song's name #}
+    <label class="label">{% trans %}Edit Song Name{% endtrans %}</label>
+    <div class="field">
+      <input autocomplete="off" id="new_file_name" class="input" type="text" name="new_file_name"
+        value="{{ filename_from_path(song) }}"></input>
+    </div>
+    <ul>
+      {# MSG: Label on button which auto formats the song's title. #}
+      <li><a id='remove-karaoke'>{% trans %}Auto-format{% endtrans %}</a></li>
+      {# MSG: Label on button which swaps the order of the artist and song in the title. #}
+      <li><a id='swap-order'>{% trans %}Swap artist/song order{% endtrans %}</a></li>
+      {# MSG: Label on button which loads results from the website Last.fm and suggests titles based on matches there. #}
+      <li><a id='suggest-title'>Suggest from Last.fm</a>
+        <span class="button is-loading is-hidden suggest_loader" style="border:0;background-color:transparent;"></span>
+        <span id="suggest_results"></span>
+      </li>
+    </ul>
+    <div class="field is-grouped">
+      <div class="control">
+        <button class="button is-primary" id="search-button" type="submit">
+          {# MSG: Label on button which saves the changes. #}
+          {%- trans %}Save{% endtrans -%}
+        </button>
+      </div>
+      <div class="control">
+        <a class="button is-light" href="{{ referrer }}">
+          {%- trans %}Cancel{% endtrans -%}
+        </a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<hr>
+<a class="confirm-delete-file has-text-danger is-pulled-right"
+  href="{{url_for('files.delete_file')}}?song={{url_escape(song)}}&referrer={{url_escape(referrer)}}"><i class="icon icon-trash-empty"></i>
+  {# MSG: Label on button which deletes the current song. #}
+  {%- trans -%}
+    Delete this song
+  {%- endtrans -%}
+</a><br>
+
+{% endblock %}

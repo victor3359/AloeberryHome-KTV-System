@@ -1,0 +1,21 @@
+*.pyc
+*.swp
+.venv/
+.venv*
+/.vscode/
+__pycache__/
+dist/
+build/
+songs/
+qrcode.png
+.DS_Store
+*.ini
+docker-compose.yml
+/.idea/
+.coverage
+.claude/
+.superpowers/
+/logs
+
+# Briefcase build artifacts
+*.briefcase.toml
