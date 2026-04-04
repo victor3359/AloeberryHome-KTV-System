@@ -1,0 +1,218 @@
+{% extends 'base.html' %} {% block scripts %}
+<script>
+	$(function () {
+		if ($(window).width() <= 500) {
+			$(document).scroll(function () {
+				var y = $(this).scrollTop();
+				if (y > 100) {
+					$("#alpha-bar").removeClass("mobile-hide");
+					$("#alpha-bar").fadeIn();
+				} else {
+					$("#alpha-bar").fadeOut();
+				}
+			});
+		}
+
+		$("a.add-song-link").click(function (e) {
+			e.preventDefault();
+			setUserCookie();
+			var user = Cookies.get("user");
+			$.get(this.href + encodeURIComponent(user), function (data) {
+				var obj = JSON.parse(data);
+				if (obj.success[0]) {
+					// {# MSG: Notification when a song gets added to the queue.  The song name comes after this string. #}
+					showNotification(obj.success[1], "is-success");
+				} else {
+					// {# MSG: Notification when a song does not get added to the queue.  The song name comes after this string. #}
+					showNotification(obj.success[1], "is-danger");
+				}
+			});
+		});
+
+		var recentExpanded = false;
+		$("#show-recent-songs").click(function (e) {
+			e.preventDefault();
+			if (recentExpanded) {
+				$("#recent-songs-list").slideUp(200, function () { $(this).remove(); });
+				recentExpanded = false;
+				return;
+			}
+			$.getJSON("/history", function (data) {
+				if (!data.length) {
+					showNotification("本場還沒有播放紀錄", "is-info");
+					return;
+				}
+				var html = '<div id="recent-songs-list" class="box has-background-black-bis" style="margin-top: 8px; display: none"><table style="width:100%">';
+				data.forEach(function (item, i) {
+					var singer = item.user2 ? item.user + " & " + item.user2 : item.user;
+					html += '<tr><td style="padding:4px 0; color:#aaa; width:24px">' + (i + 1) + '</td>'
+						+ '<td style="padding:4px 4px">' + $("<span>").text(item.title).html() + '</td>'
+						+ '<td style="padding:4px 0; color:#48c78e; font-size:0.85rem; white-space:nowrap">' + $("<span>").text(singer).html() + '</td></tr>';
+				});
+				html += '</table></div>';
+				$(".tabs").after(html);
+				$("#recent-songs-list").slideDown(200);
+				recentExpanded = true;
+			});
+		});
+	});
+</script>
+
+{% endblock %} {% block header %}
+<h1>
+	{% block title %} {% if letter %} {{title}}: "{{ letter.upper() }}" {% else %} {{title}} {% endif %} {% endblock %}
+</h1>
+<style>
+	#alpha-bar {
+		padding: 5px 10px;
+		border-radius: 4px;
+		margin-bottom: 10px;
+		position: sticky;
+		display: flex;
+		justify-content: space-between;
+		top: 3px;
+		z-index: 20;
+	}
+	table {
+		width: 100%;
+		table-layout: auto; /* Allows columns to adjust based on content */
+	}
+	td {
+		word-wrap: break-word; /* Ensures long words break to fit within the cell */
+	}
+	.break-word {
+		word-break: break-all; /* Ensures long words break to fit within the cell */
+	}
+
+	@media screen and (max-width: 500px) {
+		#alpha-bar {
+			font-size: 13px;
+			position: fixed;
+			display: flex;
+			align-items: center;
+			right: 8px;
+			top: 15px;
+			flex-direction: column;
+			max-width: 22px;
+			height: 95vh;
+		}
+		.mobile-hide {
+			visibility: hidden;
+		}
+		.batch-edit-btn {
+			position: absolute;
+			top: 10px;
+			right: 10px;
+			font-size: 0.875rem;
+			margin-right: 10px;
+		}
+		.box {
+			position: relative;
+		}
+	}
+</style>
+{% endblock %} {% block content %}
+
+<p class="is-flex is-justify-content-space-between">
+	<span class="is-flex-grow-1">
+		{% if sort_order == "Alphabetical" %} {# MSG: Label which displays that the songs are currently sorted by
+		alphabetical order. #} {% trans %}Sorted Alphabetically{% endtrans %} |
+		<a href="{{ url_for('files.browse') }}?sort=date">
+			{# MSG: Button which changes how the songs are sorted so they become sorted by date. #} {% trans %}Sort by
+			Date{% endtrans %}
+		</a>
+		{% endif %} {% if sort_order == "Date" %} {# MSG: Label which displays that the songs are currently sorted by
+		date. #} {% trans %}Sorted by date{% endtrans %} |
+		<a href="{{ url_for('files.browse') }}">
+			{# MSG: Button which changes how the songs are sorted so they become sorted by name. #} {% trans %}Sort by
+			Alphabetical{% endtrans %}
+		</a>
+		{% endif %}
+	</span>
+	{% if admin %}
+	<a class="batch-edit-btn" href="{{ url_for('batch_song_renamer.browse')}}" title="Edit all songs"
+		><i class="icon icon-edit"></i>{# MSG: Button to open the batch song renamer page. #} {% trans %}Edit all songs{%
+		endtrans %}</a
+	>
+	{% endif%}
+</p>
+
+<div class="tabs is-small" style="margin-bottom: 4px">
+	<ul>
+		<li class="{% if not lang %}is-active{% endif %}">
+			<a href="{{ url_for('files.browse') }}{% if sort_order == 'Date' %}?sort=date{% endif %}">All</a>
+		</li>
+		<li class="{% if lang == 'chinese' %}is-active{% endif %}">
+			<a href="{{ url_for('files.browse') }}?lang=chinese{% if sort_order == 'Date' %}&sort=date{% endif %}">中文</a>
+		</li>
+		<li class="{% if lang == 'japanese' %}is-active{% endif %}">
+			<a href="{{ url_for('files.browse') }}?lang=japanese{% if sort_order == 'Date' %}&sort=date{% endif %}">日文</a>
+		</li>
+		<li class="{% if lang == 'korean' %}is-active{% endif %}">
+			<a href="{{ url_for('files.browse') }}?lang=korean{% if sort_order == 'Date' %}&sort=date{% endif %}">韓文</a>
+		</li>
+		<li class="{% if lang == 'english' %}is-active{% endif %}">
+			<a href="{{ url_for('files.browse') }}?lang=english{% if sort_order == 'Date' %}&sort=date{% endif %}">English</a>
+		</li>
+		<li>
+			<a href="#" id="show-recent-songs">最近播放</a>
+		</li>
+	</ul>
+</div>
+
+{% if top_artists %}
+<details style="margin-bottom: 8px">
+	<summary style="cursor: pointer; color: #aaa; font-size: 0.85rem; padding: 4px 0">歌手篩選 ({{ top_artists | length }})</summary>
+	<div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 6px">
+		{% for a in top_artists %}
+		<a
+			href="{{ url_for('files.browse') }}?artist={{ url_escape(a.encode('utf-8')) }}{% if lang %}&lang={{ lang }}{% endif %}{% if sort_order == 'Date' %}&sort=date{% endif %}"
+			class="tag {% if artist_filter == a %}is-primary{% else %}is-dark{% endif %}"
+		>{{ a }}</a>
+		{% endfor %}
+	</div>
+</details>
+{% endif %}
+
+<div id="alpha-bar" class="column is-full has-background-dark mobile-hide">
+	<a href="{{ url_for('files.browse') }}" title="Show all"><i class="icon icon-list-bullet"></i></a>
+	<a href="{{ url_for('files.browse') }}?letter=numeric">#</a>
+	{% for letter in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+	'u', 'v', 'w', 'x', 'y', 'z'] %}
+	<a href="{{ url_for('files.browse') }}?letter={{letter}}">{{letter.upper()}}</a>
+	{% endfor %}
+</div>
+
+{{ pagination.links }} {{ pagination.info }}
+<table>
+	{% for song in songs %}
+	<tr value="{{ song }}">
+		<td style="padding: 5px 0px">{{loop.index + pagination.skip}}</td>
+		<td id="{{filename_from_path(song)[0].lower()}}" style="padding-right: 0">
+			<a
+				class="add-song-link has-text-weight-bold has-text-success"
+				title="Add '{{filename_from_path(song)}}' to queue"
+				href="{{url_for('queue.enqueue')}}?song={{url_escape(song.encode('utf-8','surrogateescape'))}}&user="
+				><i class="icon icon-list-add"></i>
+			</a>
+		</td>
+		<td class="break-word" style="padding-right: 0">
+			{{filename_from_path(song)}}
+			{% if song in queue_files %}
+			<span class="tag is-warning is-light" style="margin-left: 6px; font-size: 0.7rem; vertical-align: middle;">已排隊</span>
+			{% endif %}
+		</td>
+		{% if admin %}
+		<td style="padding-right: 0">
+			<a
+				class="edit-button"
+				href="{{url_for('files.edit_file')}}?song={{url_escape(song.encode('utf-8','surrogateescape'))}}&referrer={{url_escape(current_url)}}"
+				title="Edit song"
+				><i class="icon icon-edit-1"></i>
+			</a>
+		</td>
+		{% endif %} {% endfor %}
+	</tr>
+</table>
+
+{{ pagination.links }} {% endblock %}
