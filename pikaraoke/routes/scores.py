@@ -88,6 +88,43 @@ def get_favorites():
     return jsonify(k.favorites.get_user_favorites(user))
 
 
+@scores_bp.post("/reprocess")
+def reprocess_song():
+    """Delete stems and lyrics for a song, then re-run vocal separation + transcription."""
+    k = get_karaoke_instance()
+    data = request.get_json(silent=True) or request.form
+    song_path = (data.get("song") or "").strip()
+    if not song_path:
+        return jsonify({"ok": False, "error": "Missing song path"}), 400
+
+    import os
+    import threading
+
+    base = os.path.splitext(song_path)[0]
+    # Delete existing stems and lyrics
+    for suffix in ("_vocals.mp3", "_instrumental.mp3", "_karaoke.ass"):
+        path = base + suffix
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    # Re-process in background thread
+    title = k.song_manager.filename_from_path(song_path, remove_youtube_id=True)
+
+    def _reprocess():
+        try:
+            k.vocal_separator.process(song_path, title=title)
+        except Exception as e:
+            import logging
+
+            logging.warning("Reprocess failed for %s: %s", song_path, e)
+
+    threading.Thread(target=_reprocess, daemon=True).start()
+    return jsonify({"ok": True, "message": f"Reprocessing: {title}"})
+
+
 @scores_bp.get("/session_summary")
 def get_session_summary():
     """Return the session summary statistics."""

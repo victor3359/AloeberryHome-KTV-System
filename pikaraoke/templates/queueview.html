@@ -301,6 +301,13 @@
   window.socket.off("now_playing"); window.socket.on("now_playing", window.queuePage_getQueue);
   window.socket.off("download_started"); window.socket.on("download_started", function() { if (!window.downloadPollTimer) window.queuePage_getDownloads(); });
   window.socket.off("download_stopped"); window.socket.on("download_stopped", function() { if (window.downloadPollTimer) { clearTimeout(window.downloadPollTimer); window.downloadPollTimer = null; } window.queuePage_getDownloads(); });
+  window.socket.off("separation_started"); window.socket.on("separation_started", function() {
+    $("#processing-status").html('<div style="padding:10px; color:var(--accent-cyan, #06b6d4); font-size:0.85rem"><i class="icon icon-music"></i> AI 分離人聲中...</div>').show();
+  });
+  window.socket.off("separation_complete"); window.socket.on("separation_complete", function() {
+    $("#processing-status").html('<div style="padding:10px; color:var(--color-success, #10b981); font-size:0.85rem"><i class="icon icon-ok"></i> AI 處理完成</div>').show();
+    setTimeout(function() { $("#processing-status").fadeOut(); }, 5000);
+  });
   window.queuePageState.previousQueue = null;
   window.queuePageState.previousNowPlaying = null;
 
@@ -475,6 +482,8 @@
 {% endif %}
 
 <!-- Downloads section -->
+<div id="processing-status" style="display:none"></div>
+
 <div id="downloads-section" style="display:none; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
   <div class="section-header"><span>下載中</span></div>
   <div id="downloads-container"></div>

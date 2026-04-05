@@ -239,6 +239,8 @@ def main() -> None:
 
     k.events.on("download_started", _broadcast_in_context("download_started"))
     k.events.on("download_stopped", _broadcast_in_context("download_stopped"))
+    k.events.on("separation_started", _broadcast_in_context("separation_started"))
+    k.events.on("separation_complete", _broadcast_in_context("separation_complete"))
 
     # expose shared configuration variables to the flask app
     app.config["ADMIN_PASSWORD"] = args.admin_password
