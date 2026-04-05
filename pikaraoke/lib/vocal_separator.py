@@ -545,16 +545,10 @@ class VocalSeparator:
             self._events.emit("separation_started", {"song_path": song_path})
             logging.info("Starting vocal separation: %s", song_path)
 
-            # Auto-detect CUDA at runtime
-            device = self._device
-            try:
-                import torch
-
-                if device == "cuda" and not torch.cuda.is_available():
-                    logging.warning("CUDA not available for Demucs, using CPU")
-                    device = "cpu"
-            except ImportError:
-                device = "cpu"
+            # Force Demucs to CPU so GPU stays free for video playback.
+            # Demucs subprocess can't share GPU nicely with the browser.
+            # With --segment 10 + OMP_NUM_THREADS=2, CPU mode is acceptable.
+            device = "cpu"
 
             cmd = [
                 sys.executable,
