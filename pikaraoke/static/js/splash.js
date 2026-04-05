@@ -409,18 +409,15 @@ const handleNowPlayingUpdate = (np) => {
         hlsInstance = new Hls({ startPosition: 0 });
 
         // Detect multi-audio tracks for instant switching
+        // FFmpeg names them audio_1/audio_2/audio_3 but order is deterministic:
+        // index 0 = original, 1 = instrumental, 2 = guide
         hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, function() {
-          window.audioTrackMap = {};
+          window.audioTrackMap = null;
           if (hlsInstance.audioTracks && hlsInstance.audioTracks.length > 1) {
-            hlsInstance.audioTracks.forEach(function(track, i) {
-              var name = (track.name || "track" + i).toLowerCase();
-              window.audioTrackMap[name] = i;
-              console.log("Audio track " + i + ": " + track.name);
-            });
-            // Default to instrumental if available
-            if (window.audioTrackMap["instrumental"] !== undefined) {
-              hlsInstance.audioTrack = window.audioTrackMap["instrumental"];
-            }
+            window.audioTrackMap = { "original": 0, "instrumental": 1, "guide": 2 };
+            console.log("Multi-audio detected: " + hlsInstance.audioTracks.length + " tracks");
+            // Default to instrumental (karaoke mode)
+            hlsInstance.audioTrack = 1;
           }
         });
 
