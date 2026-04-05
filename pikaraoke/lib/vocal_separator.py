@@ -545,10 +545,15 @@ class VocalSeparator:
             self._events.emit("separation_started", {"song_path": song_path})
             logging.info("Starting vocal separation: %s", song_path)
 
-            # Force Demucs to CPU so GPU stays free for video playback.
-            # Demucs subprocess can't share GPU nicely with the browser.
-            # With --segment 10 + OMP_NUM_THREADS=2, CPU mode is acceptable.
-            device = "cpu"
+            # Use GPU if available (subprocess isolates from Flask/browser)
+            device = self._device
+            try:
+                import torch
+
+                if device == "cuda" and not torch.cuda.is_available():
+                    device = "cpu"
+            except ImportError:
+                device = "cpu"
 
             cmd = [
                 sys.executable,
@@ -682,7 +687,8 @@ class VocalSeparator:
                 "warnings.filterwarnings('ignore')\n"
                 "import torch; torch.set_num_threads(10)\n"
                 "import whisper\n"
-                f"model = whisper.load_model('{self._whisper_model}', device='cpu')\n"
+                f"import torch; _dev = 'cuda' if torch.cuda.is_available() else 'cpu'\n"
+                f"model = whisper.load_model('{self._whisper_model}', device=_dev)\n"
                 f"result = model.transcribe(r'{audio_source}', word_timestamps=True, "
                 f"verbose=False, condition_on_previous_text=False"
                 + (f", language='{detected_lang}'" if detected_lang else "")
