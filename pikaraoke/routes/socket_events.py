@@ -102,7 +102,7 @@ def setup_socket_events(socketio):
             socketio.emit("playback_position", position, include_self=False)
 
     @socketio.on("disconnect")
-    def handle_disconnect() -> None:
+    def handle_disconnect(reason=None) -> None:
         """Handle Socket.IO client disconnection and manage splash role handover."""
         global master_splash_id
         sid = request.sid
@@ -117,4 +117,4 @@ def setup_socket_events(socketio):
                         new_master = next(iter(splash_connections))
                         master_splash_id = new_master
                         socketio.emit("splash_role", "master", room=new_master)
-                    logging.info(f"New master splash elected: {new_master}")
+                        logging.info(f"New master splash elected: {new_master}")
