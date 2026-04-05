@@ -559,7 +559,7 @@ class VocalSeparator:
                 "-d",
                 device,
                 "--segment",
-                "10",  # Process 10s chunks (reduces peak GPU memory)
+                "7",  # Process 7s chunks (htdemucs max is 7.8s)
                 "--mp3",
                 "--mp3-bitrate",
                 "192",
