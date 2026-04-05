@@ -89,6 +89,42 @@ def _ass_path_for(song_path: str) -> str:
     return base + "_karaoke.ass"
 
 
+def _parse_lrc_line(line: str) -> tuple[float, str] | None:
+    """Parse an LRC timestamp line like '[01:23.45]lyrics text'."""
+    import re
+
+    m = re.match(r"\[(\d+):(\d+)\.(\d+)\](.*)", line.strip())
+    if not m:
+        return None
+    minutes, seconds, centis, text = m.groups()
+    timestamp = int(minutes) * 60 + int(seconds) + int(centis) / 100
+    return timestamp, text.strip()
+
+
+def _search_online_lyrics(title: str) -> list[dict] | None:
+    """Search for synced lyrics (LRC) online. Returns parsed segments or None."""
+    try:
+        import syncedlyrics
+
+        lrc = syncedlyrics.search(title, synced_only=True)
+        if not lrc:
+            return None
+
+        segments = []
+        lines = [_parse_lrc_line(ln) for ln in lrc.splitlines() if ln.strip()]
+        parsed = [p for p in lines if p and p[1]]
+
+        for i, (start, text) in enumerate(parsed):
+            end = parsed[i + 1][0] if i + 1 < len(parsed) else start + 5.0
+            segments.append({"start": start, "end": end, "text": text, "words": []})
+
+        logging.info("Found online synced lyrics: %d lines", len(segments))
+        return segments if segments else None
+    except Exception as e:
+        logging.warning("Online lyrics search failed: %s", e)
+        return None
+
+
 def _format_ass_time(seconds: float) -> str:
     """Format seconds as ASS timestamp H:MM:SS.cc."""
     h = int(seconds // 3600)
@@ -416,23 +452,33 @@ class VocalSeparator:
                 else:
                     logging.warning("Separation failed for %s: %s", song_path, sep_result.error)
 
-            # Step 2: Transcription (Whisper)
-            if WHISPER_AVAILABLE:
+            # Step 2: Try online lyrics first (more accurate text)
+            search_title = title or os.path.basename(song_path)
+            online_segments = _search_online_lyrics(search_title)
+
+            if online_segments:
+                # Online lyrics found — use them directly (no Whisper needed for text)
+                logging.info("Using online synced lyrics for: %s", search_title)
+                ass_content = generate_karaoke_ass(online_segments, title)
+                ass_path = _ass_path_for(song_path)
+                with open(ass_path, "w", encoding="utf-8") as f:
+                    f.write(ass_content)
+                logging.info("Karaoke ASS from online lyrics: %s", ass_path)
+            elif WHISPER_AVAILABLE:
+                # Fallback: Whisper transcription
                 trans_result = self.transcribe(song_path)
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
-
-                    # Step 3: Generate karaoke ASS
                     ass_content = generate_karaoke_ass(trans_result.segments, title)
                     ass_path = _ass_path_for(song_path)
                     with open(ass_path, "w", encoding="utf-8") as f:
                         f.write(ass_content)
-                    logging.info("Karaoke ASS generated: %s", ass_path)
+                    logging.info("Karaoke ASS from Whisper: %s", ass_path)
                 else:
                     logging.warning(
                         "Transcription failed for %s: %s",
                         song_path,
-                        trans_result.error,
+                        getattr(trans_result, "error", "unknown"),
                     )
 
             success = stem_paths is not None or ass_path is not None
