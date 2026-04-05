@@ -33,6 +33,7 @@ from pikaraoke.lib.play_stats import PlayStats
 from pikaraoke.lib.playback_controller import PlaybackController
 from pikaraoke.lib.preference_manager import PreferenceManager
 from pikaraoke.lib.queue_manager import QueueManager
+from pikaraoke.lib.song_database import SongDatabase
 from pikaraoke.lib.song_manager import SongManager
 from pikaraoke.lib.vocal_separator import VocalSeparator
 from pikaraoke.lib.youtube_dl import (
@@ -221,6 +222,9 @@ class Karaoke:
 
         self.generate_qr_code()
 
+        # Sync song database with filesystem after songs are loaded
+        # (deferred until after data_dir is set up below)
+
         # Set preferred language from command line if provided (persists to config)
         if preferred_language:
             self.preferences.set("preferred_language", preferred_language)
@@ -256,6 +260,7 @@ class Karaoke:
         data_dir = get_data_directory()
         self.play_stats = PlayStats(data_dir)
         self.favorites = Favorites(data_dir)
+        self.song_db = SongDatabase(data_dir)
 
         # Initialize queue manager
         self.queue_manager = QueueManager(
@@ -284,6 +289,15 @@ class Karaoke:
             vocal_separator=self.vocal_separator if self.vocal_separator.is_available() else None,
         )
         self.download_manager.start()
+
+        # Sync song database with filesystem
+        from pikaraoke.routes.files import _detect_language
+
+        self.song_db.sync_from_filesystem(
+            list(self.song_manager.songs),
+            SongManager.filename_from_path,
+            _detect_language,
+        )
 
     def _load_preferences(self, **cli_overrides: Any) -> None:
         """Load preference-driven attributes from config file.
@@ -634,6 +648,7 @@ class Karaoke:
                         )
                     if song_title:
                         self.play_stats.increment(song_title)
+                        self.song_db.increment_play_count(song["file"])
                     # Auto-default to instrumental if stems exist (KTV standard)
                     audio_mode = song.get("audio_mode", "original")
                     if audio_mode == "original" and self.vocal_separator.has_stems(song["file"]):

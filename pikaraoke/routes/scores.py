@@ -88,6 +88,44 @@ def get_favorites():
     return jsonify(k.favorites.get_user_favorites(user))
 
 
+@scores_bp.get("/library/stats")
+def library_stats():
+    """Get song library statistics."""
+    k = get_karaoke_instance()
+    return jsonify(k.song_db.get_stats())
+
+
+@scores_bp.get("/library/songs")
+def library_songs():
+    """Get all songs with metadata."""
+    k = get_karaoke_instance()
+    artist = request.args.get("artist")
+    language = request.args.get("language")
+    q = request.args.get("q")
+    if q:
+        return jsonify(k.song_db.search(q))
+    if artist:
+        return jsonify(k.song_db.get_songs_by_artist(artist))
+    if language:
+        return jsonify(k.song_db.get_songs_by_language(language))
+    return jsonify(k.song_db.get_all_songs())
+
+
+@scores_bp.get("/library/artists")
+def library_artists():
+    """Get artist list with song counts."""
+    k = get_karaoke_instance()
+    return jsonify(k.song_db.get_artists())
+
+
+@scores_bp.get("/library/top")
+def library_top():
+    """Get most played songs."""
+    k = get_karaoke_instance()
+    limit = request.args.get("n", 50, type=int)
+    return jsonify(k.song_db.get_top_played(limit))
+
+
 @scores_bp.post("/reprocess")
 def reprocess_song():
     """Delete stems and lyrics for a song, then re-run vocal separation + transcription."""
