@@ -193,6 +193,43 @@ class SongDatabase:
             conn.close()
             return {r["file_path"] for r in rows}
 
+    def get_recommendations(self, file_path: str, limit: int = 10) -> list[dict]:
+        """Get song recommendations based on same artist and language."""
+        with self._lock:
+            conn = self._get_conn()
+            current = conn.execute("SELECT * FROM songs WHERE file_path=?", (file_path,)).fetchone()
+            if not current:
+                # Fallback: return most played songs
+                rows = conn.execute(
+                    "SELECT * FROM songs WHERE file_path != ? ORDER BY play_count DESC LIMIT ?",
+                    (file_path, limit),
+                ).fetchall()
+                conn.close()
+                return [dict(r) for r in rows]
+
+            results = []
+            # Same artist, different song
+            if current["artist"]:
+                rows = conn.execute(
+                    "SELECT * FROM songs WHERE artist=? AND file_path!=? ORDER BY play_count DESC LIMIT ?",
+                    (current["artist"], file_path, limit // 2),
+                ).fetchall()
+                results.extend([dict(r) for r in rows])
+
+            # Same language, popular songs
+            if current["language"]:
+                seen = {file_path} | {r["file_path"] for r in results}
+                rows = conn.execute(
+                    "SELECT * FROM songs WHERE language=? AND file_path NOT IN ({}) ORDER BY play_count DESC LIMIT ?".format(
+                        ",".join("?" for _ in seen)
+                    ),
+                    (*seen, limit - len(results)),
+                ).fetchall()
+                results.extend([dict(r) for r in rows])
+
+            conn.close()
+            return results[:limit]
+
     def get_stats(self) -> dict:
         """Get library statistics."""
         with self._lock:

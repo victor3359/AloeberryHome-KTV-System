@@ -126,6 +126,17 @@ def library_top():
     return jsonify(k.song_db.get_top_played(limit))
 
 
+@scores_bp.get("/library/recommend")
+def library_recommend():
+    """Get song recommendations based on current song."""
+    k = get_karaoke_instance()
+    song = request.args.get("song", "")
+    if not song:
+        # Use currently playing song
+        song = k.playback_controller.now_playing_filename or ""
+    return jsonify(k.song_db.get_recommendations(song))
+
+
 @scores_bp.post("/reprocess")
 def reprocess_song():
     """Delete stems and lyrics for a song, then re-run vocal separation + transcription."""
