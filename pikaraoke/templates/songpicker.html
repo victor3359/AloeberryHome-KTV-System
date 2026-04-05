@@ -222,6 +222,16 @@ $(function () {
   if (typeof io !== "undefined") {
     var sock = io();
     sock.on("now_playing", function (np) { updateMiniStrip(np); });
+    sock.on("processing_progress", function (data) {
+      if (!data) return;
+      var pct = data.percent || 0;
+      var stage = data.stage || "";
+      var color = pct >= 100 ? "#10b981" : "#06b6d4";
+      $("#sp-processing").html(
+        '<div style="padding:6px 14px; font-size:0.8rem; color:' + color + '">' + stage + ' (' + pct + '%)</div>'
+      ).show();
+      if (pct >= 100) setTimeout(function() { $("#sp-processing").fadeOut(); }, 5000);
+    });
     // Initial load
     $.get("{{ url_for('now_playing.now_playing') }}", function (data) {
       updateMiniStrip(JSON.parse(data));
@@ -326,6 +336,8 @@ $(function () {
   <button id="sp-pause-btn" class="sp-mini-strip__btn"><i class="icon-pause"></i></button>
   <button id="sp-skip-btn" class="sp-mini-strip__btn"><i class="icon-to-end"></i></button>
 </div>
+
+<div id="sp-processing" style="display:none"></div>
 
 {# Searching loader #}
 <div id="searching-loader" class="sp-loader" style="display:none">

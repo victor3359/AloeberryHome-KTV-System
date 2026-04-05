@@ -233,7 +233,9 @@ def main() -> None:
     def _broadcast_in_context(event_name):
         def handler(*args, **kwargs):
             with app.app_context():
-                broadcast_event(event_name)
+                # Forward first arg as data payload if present
+                data = args[0] if args else None
+                broadcast_event(event_name, data)
 
         return handler
 
@@ -241,6 +243,7 @@ def main() -> None:
     k.events.on("download_stopped", _broadcast_in_context("download_stopped"))
     k.events.on("separation_started", _broadcast_in_context("separation_started"))
     k.events.on("separation_complete", _broadcast_in_context("separation_complete"))
+    k.events.on("processing_progress", _broadcast_in_context("processing_progress"))
 
     # expose shared configuration variables to the flask app
     app.config["ADMIN_PASSWORD"] = args.admin_password

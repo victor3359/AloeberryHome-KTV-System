@@ -577,9 +577,7 @@ class VocalSeparator:
                 "MKL_NUM_THREADS": "2",
             }
             # Lower priority on Windows so playback isn't starved
-            creationflags = (
-                0x00004000 if sys.platform == "win32" else 0
-            )
+            creationflags = 0x00004000 if sys.platform == "win32" else 0
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -744,20 +742,26 @@ class VocalSeparator:
             ass_path = None
             language = ""
 
-            # Step 1: Vocal separation (Demucs)
+            # Step 1: Vocal separation (Demucs) — 0-50%
             if DEMUCS_AVAILABLE:
+                self._events.emit("processing_progress", {"stage": "分離人聲", "percent": 0})
                 sep_result = self.separate(song_path)
                 if sep_result.success:
                     stem_paths = sep_result.stem_paths
+                    self._events.emit("processing_progress", {"stage": "分離完成", "percent": 50})
                 else:
                     logging.warning("Separation failed for %s: %s", song_path, sep_result.error)
+                    self._events.emit(
+                        "processing_progress", {"stage": "分離失敗，改用原始音訊", "percent": 50}
+                    )
 
-            # Step 2: Always use Whisper for word-level timing (smooth animation)
-            # Then optionally correct text with online lyrics
+            # Step 2: Whisper transcription — 50-90%
             if WHISPER_AVAILABLE:
+                self._events.emit("processing_progress", {"stage": "AI 生成歌詞中", "percent": 55})
                 trans_result = self.transcribe(song_path)
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
+                    self._events.emit("processing_progress", {"stage": "歌詞校對中", "percent": 85})
                     segments = _filter_whisper_hallucinations(trans_result.segments)
 
                     # Try online lyrics for typo correction (character-level only)
@@ -766,11 +770,13 @@ class VocalSeparator:
                     if online_segments:
                         segments = _correct_typos_with_online_lyrics(segments, online_segments)
 
+                    self._events.emit("processing_progress", {"stage": "產生字幕", "percent": 95})
                     ass_content = generate_karaoke_ass(segments, title)
                     ass_path = _ass_path_for(song_path)
                     with open(ass_path, "w", encoding="utf-8") as f:
                         f.write(ass_content)
                     logging.info("Karaoke ASS generated: %s", ass_path)
+                    self._events.emit("processing_progress", {"stage": "處理完成", "percent": 100})
                 else:
                     logging.warning(
                         "Transcription failed for %s: %s",

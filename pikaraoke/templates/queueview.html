@@ -302,11 +302,25 @@
   window.socket.off("download_started"); window.socket.on("download_started", function() { if (!window.downloadPollTimer) window.queuePage_getDownloads(); });
   window.socket.off("download_stopped"); window.socket.on("download_stopped", function() { if (window.downloadPollTimer) { clearTimeout(window.downloadPollTimer); window.downloadPollTimer = null; } window.queuePage_getDownloads(); });
   window.socket.off("separation_started"); window.socket.on("separation_started", function() {
-    $("#processing-status").html('<div style="padding:10px; color:var(--accent-cyan, #06b6d4); font-size:0.85rem"><i class="icon icon-music"></i> AI 分離人聲中...</div>').show();
+    $("#processing-status").show();
   });
   window.socket.off("separation_complete"); window.socket.on("separation_complete", function() {
-    $("#processing-status").html('<div style="padding:10px; color:var(--color-success, #10b981); font-size:0.85rem"><i class="icon icon-ok"></i> AI 處理完成</div>').show();
     setTimeout(function() { $("#processing-status").fadeOut(); }, 5000);
+  });
+  window.socket.off("processing_progress"); window.socket.on("processing_progress", function(data) {
+    if (!data) return;
+    var stage = data.stage || "";
+    var pct = data.percent || 0;
+    var color = pct >= 100 ? "var(--color-success, #10b981)" : "var(--accent-cyan, #06b6d4)";
+    var icon = pct >= 100 ? "icon-ok" : "icon-music";
+    var html = '<div style="padding:10px">';
+    html += '<div style="display:flex; align-items:center; gap:8px; color:' + color + '; font-size:0.85rem">';
+    html += '<i class="icon ' + icon + '"></i> ' + stage + ' (' + pct + '%)';
+    html += '</div>';
+    html += '<div style="margin-top:6px; height:4px; border-radius:2px; background:rgba(255,255,255,0.1)">';
+    html += '<div style="height:100%; width:' + pct + '%; border-radius:2px; background:linear-gradient(90deg, #7c3aed, #06b6d4); transition:width 0.5s ease"></div>';
+    html += '</div></div>';
+    $("#processing-status").html(html).show();
   });
   window.queuePageState.previousQueue = null;
   window.queuePageState.previousNowPlaying = null;
