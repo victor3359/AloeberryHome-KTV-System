@@ -101,12 +101,49 @@ def _parse_lrc_line(line: str) -> tuple[float, str] | None:
     return timestamp, text.strip()
 
 
+def _clean_search_title(title: str) -> str:
+    """Clean YouTube video title to extract artist + song name for lyrics search."""
+    import re
+
+    # Remove YouTube ID suffix (---xxxxx)
+    title = re.sub(r"---[\w-]{11}(\.\w+)?$", "", title)
+    # Remove file extension
+    title = re.sub(r"\.\w{3,4}$", "", title)
+    # Remove common noise words
+    noise = [
+        r"\(?official\s*(music\s*)?video\)?",
+        r"\(?official\s*MV\)?",
+        r"\(?MV\)?",
+        r"\(?HQ\)?",
+        r"官方版",
+        r"官方MV",
+        r"完整版",
+        r"lyrics?\s*video",
+        r"with\s*lyrics",
+        r"full\s*version",
+        r"\(?HD\)?",
+        r"\(?4K\)?",
+        r"\(?1080p\)?",
+    ]
+    for pat in noise:
+        title = re.sub(pat, "", title, flags=re.IGNORECASE)
+    # Remove brackets with content like 〈...〉【...】(...)
+    title = re.sub(r"[〈〉【】\[\]]", " ", title)
+    # Clean up whitespace
+    title = re.sub(r"\s+", " ", title).strip()
+    # Remove trailing punctuation
+    title = title.rstrip(" -_")
+    return title
+
+
 def _search_online_lyrics(title: str) -> list[dict] | None:
     """Search for synced lyrics (LRC) online. Returns parsed segments or None."""
     try:
         import syncedlyrics
 
-        lrc = syncedlyrics.search(title, synced_only=True)
+        clean_title = _clean_search_title(title)
+        logging.info("Searching online lyrics for: '%s'", clean_title)
+        lrc = syncedlyrics.search(clean_title, synced_only=True)
         if not lrc:
             return None
 
@@ -114,11 +151,16 @@ def _search_online_lyrics(title: str) -> list[dict] | None:
         lines = [_parse_lrc_line(ln) for ln in lrc.splitlines() if ln.strip()]
         parsed = [p for p in lines if p and p[1]]
 
+        # Validation: reject if too few lines (likely wrong match)
+        if len(parsed) < 5:
+            logging.warning("Online lyrics too short (%d lines), skipping", len(parsed))
+            return None
+
         for i, (start, text) in enumerate(parsed):
             end = parsed[i + 1][0] if i + 1 < len(parsed) else start + 5.0
             segments.append({"start": start, "end": end, "text": text, "words": []})
 
-        logging.info("Found online synced lyrics: %d lines", len(segments))
+        logging.info("Found online synced lyrics: %d lines for '%s'", len(segments), clean_title)
         return segments if segments else None
     except Exception as e:
         logging.warning("Online lyrics search failed: %s", e)
@@ -586,14 +628,6 @@ class VocalSeparator:
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
                     segments = _filter_whisper_hallucinations(trans_result.segments)
-
-                    # Try online lyrics to correct Whisper text errors
-                    search_title = title or os.path.basename(song_path)
-                    online_segments = _search_online_lyrics(search_title)
-                    if online_segments:
-                        segments = _merge_online_text_with_whisper_timing(segments, online_segments)
-                        logging.info("Text corrected with online lyrics")
-
                     ass_content = generate_karaoke_ass(segments, title)
                     ass_path = _ass_path_for(song_path)
                     with open(ass_path, "w", encoding="utf-8") as f:
