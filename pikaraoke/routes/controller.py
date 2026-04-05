@@ -1,5 +1,7 @@
 """Playback control routes for skip, pause, volume, and transpose."""
 
+import json
+
 import flask_babel
 from flask import redirect, request, url_for
 from flask_smorest import Blueprint
@@ -58,7 +60,7 @@ def audio_mode(mode):
         # Fallback: re-queue with seek position
         broadcast_event("skip", "audio mode change")
         k.change_audio_mode(mode)
-    return redirect(url_for("queue.queue"))
+    return json.dumps({"ok": True, "mode": mode})
 
 
 @controller_bp.route("/restart")

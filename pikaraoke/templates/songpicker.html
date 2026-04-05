@@ -171,9 +171,11 @@ $(function () {
   // ----- Browse: add song to queue -----
   $(document).on("click", "a.add-song-link", function (e) {
     e.preventDefault();
+    var link = this;
+    if ($(link).data("loading")) return;  // Prevent double-click
+    $(link).data("loading", true);
     setUserCookie();
     var user = Cookies.get("user");
-    var link = this;
     $.get($(link).attr("href") + encodeURIComponent(user), function (data) {
       var obj = JSON.parse(data);
       if (obj.success[0]) {
