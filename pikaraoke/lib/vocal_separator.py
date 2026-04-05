@@ -225,7 +225,7 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
 
         # Skip very short segments (likely noise)
         duration = seg.get("end", 0) - seg.get("start", 0)
-        if duration < 0.3:
+        if duration < 0.1:
             continue
 
         # Skip segments with high no_speech_prob (if available)
@@ -235,7 +235,7 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
         # Track repeated text — hallucination often repeats the same phrase
         normalized = re.sub(r"\s+", "", text)
         seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
-        if seen_texts[normalized] > 2:
+        if seen_texts[normalized] > 4:
             continue
 
         # Skip common hallucination patterns (credits, attributions)

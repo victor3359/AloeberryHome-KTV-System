@@ -351,13 +351,18 @@ const handleNowPlayingUpdate = (np) => {
 
   const video = getVideoPlayer();
 
-  // Setup ASS subtitle file if found
+  // Setup ASS subtitle file if found (skip recreation if URL unchanged)
   const subtitleUrl = np.now_playing_subtitle_url;
-  if (octopusInstance) {
-    octopusInstance.dispose();
-    octopusInstance = null;
+  if (subtitleUrl === window._currentSubtitleUrl && octopusInstance) {
+    // Same subtitle file — don't destroy/recreate (prevents stutter on audio switch)
+  } else {
+    if (octopusInstance) {
+      octopusInstance.dispose();
+      octopusInstance = null;
+    }
+    window._currentSubtitleUrl = subtitleUrl;
   }
-  if (subtitleUrl && video) {
+  if (subtitleUrl && video && !octopusInstance) {
     const options = {
       video: video,
       subUrl: subtitleUrl,
@@ -775,14 +780,16 @@ const setupSocketEvents = () => {
     var trackIndex = window.audioTrackMap[mode];
     if (trackIndex !== undefined) {
       hlsInstance.audioTrack = trackIndex;
-      // Re-sync subtitle renderer after track switch to prevent stutter
-      if (octopusInstance) {
-        var video = getVideoPlayer();
-        if (video) {
-          setTimeout(function() {
-            octopusInstance.setCurrentTime(video.currentTime);
-          }, 200);
-        }
+      // Force seeked event to re-enable SubtitlesOctopus timeupdate listener.
+      // HLS audio track switch triggers seeking but not always seeked,
+      // which permanently disables subtitle time sync.
+      var video = getVideoPlayer();
+      if (video) {
+        setTimeout(function() {
+          var pos = video.currentTime;
+          video.currentTime = pos + 0.001;
+          video.currentTime = pos;
+        }, 150);
       }
       console.log("Audio track switched to: " + mode + " (index " + trackIndex + ")");
     }
