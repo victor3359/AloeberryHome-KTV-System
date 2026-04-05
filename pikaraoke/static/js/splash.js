@@ -363,9 +363,9 @@ const handleNowPlayingUpdate = (np) => {
       subUrl: subtitleUrl,
       fonts: ["/static/fonts/Arial.ttf", "/static/fonts/DroidSansFallback.ttf"],
       renderMode: "wasm-blend",
-      targetFps: 30,
-      prescaleFactor: 1.0,
-      prescaleHeightLimit: 1080,
+      targetFps: 60,
+      prescaleFactor: 1.5,
+      prescaleHeightLimit: 2160,
       debug: false,
       workerUrl: "/static/js/subtitles-octopus-worker.js"
     };
