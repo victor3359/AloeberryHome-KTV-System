@@ -42,6 +42,7 @@ ENDPOINTS=(
     "/"
     "/splash"
     "/queue"
+    "/songpicker"
     "/search"
     "/browse"
     "/info"
@@ -50,7 +51,7 @@ ENDPOINTS=(
 FAILED=false
 for path in "${ENDPOINTS[@]}"; do
     echo "Checking http://localhost:5555$path ..."
-    if ! curl -s http://localhost:5555"$path" | grep -q "DOCTYPE"; then
+    if ! curl -sL http://localhost:5555"$path" | grep -q "DOCTYPE"; then
         echo "Error: Failed to verify $path"
         FAILED=true
     fi

@@ -255,13 +255,9 @@ class VocalSeparator:
                 if self._device == "cuda" and "CUDA" in error:
                     logging.warning("CUDA failed, retrying with CPU...")
                     cmd[cmd.index("cuda")] = "cpu"
-                    result = subprocess.run(
-                        cmd, capture_output=True, text=True, timeout=1200
-                    )
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
                     if result.returncode != 0:
-                        return SeparationResult(
-                            success=False, error="Demucs failed on CPU too"
-                        )
+                        return SeparationResult(success=False, error="Demucs failed on CPU too")
                 else:
                     return SeparationResult(success=False, error=error)
 
@@ -278,9 +274,7 @@ class VocalSeparator:
                     os.rename(n_src, instrumental_path)
                     break
             else:
-                return SeparationResult(
-                    success=False, error="Demucs output files not found"
-                )
+                return SeparationResult(success=False, error="Demucs output files not found")
 
             # Cleanup demucs temp directory
             import shutil
@@ -339,9 +333,7 @@ class VocalSeparator:
             logging.info(
                 "Transcription complete: %d segments, language=%s", len(segments), language
             )
-            return TranscriptionResult(
-                success=True, segments=segments, language=language
-            )
+            return TranscriptionResult(success=True, segments=segments, language=language)
 
         except Exception as e:
             logging.error("Whisper transcription failed: %s", e)
@@ -364,9 +356,7 @@ class VocalSeparator:
                 if sep_result.success:
                     stem_paths = sep_result.stem_paths
                 else:
-                    logging.warning(
-                        "Separation failed for %s: %s", song_path, sep_result.error
-                    )
+                    logging.warning("Separation failed for %s: %s", song_path, sep_result.error)
 
             # Step 2: Transcription (Whisper)
             if WHISPER_AVAILABLE:

@@ -38,14 +38,14 @@ try {
     }
 
     Write-Host "Verifying web endpoints..."
-    $endpoints = @("/", "/splash", "/queue", "/search", "/browse", "/info")
+    $endpoints = @("/", "/splash", "/queue", "/songpicker", "/search", "/browse", "/info")
     $failed = $false
 
     foreach ($path in $endpoints) {
         Write-Host "Checking http://localhost:5555$path ..."
         try {
-            # Use curl.exe to avoid PowerShell's Invoke-WebRequest alias issues
-            $result = curl.exe -s http://localhost:5555$path | Select-String "DOCTYPE"
+            # Use curl.exe with -L to follow redirects (/, /search, /browse redirect)
+            $result = curl.exe -sL http://localhost:5555$path | Select-String "DOCTYPE"
             if (-not $result) {
                 Write-Host "Error: Failed to verify $path (DOCTYPE not found)"
                 $failed = $true
