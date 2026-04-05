@@ -207,13 +207,15 @@ def _format_ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def generate_karaoke_ass(segments: list[dict], title: str = "") -> str:
+def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = 0.3) -> str:
     """Generate ASS subtitle content with karaoke timing tags.
 
     Args:
         segments: List of Whisper segments, each with 'words' containing
                   {'word': str, 'start': float, 'end': float}.
         title: Song title for the script info.
+        timing_offset: Seconds to delay subtitle fill animation (positive = later).
+                       Compensates for Whisper detecting word onsets slightly early.
 
     Returns:
         Complete ASS file content as a string.
@@ -234,7 +236,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = [header.strip()]
 
-    # Pre-display offset: show lyrics 1.5s before they start singing
+    # Pre-display: show lyrics 1.5s before singing starts
+    # Timing offset: delay fill animation to match actual vocal onset
     pre_display = 1.5
 
     for segment in segments:
@@ -243,14 +246,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             text = segment.get("text", "").strip()
             if not text:
                 continue
-            start = segment.get("start", 0.0)
-            end = segment.get("end", start + 1.0)
+            start = segment.get("start", 0.0) + timing_offset
+            end = segment.get("end", start + 1.0) + timing_offset
             duration_cs = max(int((end - start) * 100), 10)
-            # Show early with blank \kf pad, then real fill starts at correct time
             early_start = max(0, start - pre_display)
             pad_cs = int((start - early_start) * 100)
             ass_start = _format_ass_time(early_start)
-            ass_end = _format_ass_time(end)
+            ass_end = _format_ass_time(end + 0.5)
             if pad_cs > 0:
                 lines.append(
                     f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,"
@@ -262,24 +264,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
             continue
 
-        # Build karaoke line from word-level timestamps
-        seg_start = words[0]["start"]
-        seg_end = words[-1]["end"]
+        # Build karaoke line from word-level timestamps (with offset)
+        seg_start = words[0]["start"] + timing_offset
+        seg_end = words[-1]["end"] + timing_offset
         early_start = max(0, seg_start - pre_display)
         pad_cs = int((seg_start - early_start) * 100)
         ass_start = _format_ass_time(early_start)
         ass_end = _format_ass_time(seg_end + 0.5)
 
         karaoke_parts = []
-        # Add blank pad at the beginning so lyrics appear early but fill starts on time
         if pad_cs > 0:
             karaoke_parts.append(f"{{\\kf{pad_cs}}}")
         for word_info in words:
             word = word_info.get("word", "").strip()
             if not word:
                 continue
-            w_start = word_info.get("start", 0.0)
-            w_end = word_info.get("end", w_start + 0.1)
+            w_start = word_info.get("start", 0.0) + timing_offset
+            w_end = word_info.get("end", w_start + 0.1) + timing_offset
             duration_cs = max(int((w_end - w_start) * 100), 10)
             prefix = " " if len(karaoke_parts) > (1 if pad_cs > 0 else 0) else ""
             karaoke_parts.append(f"{{\\kf{duration_cs}}}{prefix}{word}")
