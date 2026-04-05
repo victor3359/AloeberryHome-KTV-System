@@ -106,7 +106,7 @@ def songpicker():
         search=search_flag,
         record_name="songs",
         per_page=results_per_page,
-        display_msg="Showing <b>{start} - {end}</b> of <b>{total}</b> {record_name}",
+        display_msg="共 <b>{total}</b> 首歌曲",
         href=pagination_href,
     )
 

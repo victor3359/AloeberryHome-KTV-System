@@ -452,7 +452,7 @@
 
 <!-- Fair queue banner -->
 {% if fair_queue_enabled or limit_user_songs_by > 0 %}
-<div class="fair-queue-banner glass" style="margin-top: 68px">
+<div class="fair-queue-banner glass" style="margin-top: 12px">
   <i class="icon icon-exchange"></i>
   {% if fair_queue_enabled %}<b>公平排隊</b>{% endif %}
   {% if limit_user_songs_by > 0 %} &middot; 最多 <b>{{ limit_user_songs_by }}</b> 首/人{% endif %}
@@ -461,7 +461,7 @@
 {% endif %}
 
 <!-- Queue List -->
-<div id="queue-list" style="margin-top: {% if fair_queue_enabled or limit_user_songs_by > 0 %}8px{% else %}68px{% endif %}; padding-bottom: 80px;">
+<div id="queue-list" style="margin-top: 12px; padding-bottom: 80px;">
 </div>
 
 {% if admin %}

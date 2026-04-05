@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -327,6 +328,22 @@ class DownloadManager:
                     self._vocal_separator.process(song_path, title=displayed_title)
                 except Exception as e:
                     logging.warning("Vocal processing failed for %s: %s", song_path, e)
+
+            # Auto-normalize song name: "YouTubeTitle" → "Artist - Song"
+            if song_is_valid and song_path:
+                try:
+                    from pikaraoke.lib.metadata_parser import get_song_correct_name
+
+                    display_name = self._song_manager.filename_from_path(song_path)
+                    corrected = get_song_correct_name(display_name, os.path.basename(song_path))
+                    if corrected and corrected != display_name:
+                        self._song_manager.rename(song_path, corrected)
+                        # Update song_path to the new path
+                        ext = os.path.splitext(song_path)[1]
+                        song_path = os.path.join(self._download_path, corrected + ext)
+                        logging.info("Auto-renamed: %s → %s", display_name, corrected)
+                except Exception as e:
+                    logging.warning("Auto-rename failed: %s", e)
 
             if enqueue:
                 if song_is_valid and song_path:

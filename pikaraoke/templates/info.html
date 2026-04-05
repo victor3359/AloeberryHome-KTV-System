@@ -191,6 +191,59 @@
   </div>
   {% endif %}
 
+  <!-- Song Library Management -->
+  <div class="accordion-card glass">
+    <div class="accordion-header">
+      <span><i class="icon icon-music"></i> 歌庫管理</span>
+      <span class="accordion-chevron"></span>
+    </div>
+    <div class="accordion-body">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px">
+        <div class="glass" style="flex:1; min-width:100px; padding:12px; border-radius:10px; text-align:center">
+          <div style="font-size:1.5rem; font-weight:700; color:var(--accent-cyan, #06b6d4)" id="lib-song-count">-</div>
+          <div style="font-size:0.75rem; color:var(--text-secondary)">首歌曲</div>
+        </div>
+        <div class="glass" style="flex:1; min-width:100px; padding:12px; border-radius:10px; text-align:center">
+          <div style="font-size:1.5rem; font-weight:700; color:var(--accent-purple, #7c3aed)" id="lib-artist-count">-</div>
+          <div style="font-size:0.75rem; color:var(--text-secondary)">位歌手</div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px">
+        <a class="pill" href="/batch-song-renamer"><i class="icon icon-edit"></i> 批次改名</a>
+        <a class="pill" href="{{ url_for('admin.refresh') }}"><i class="icon icon-exchange"></i> 重新掃描</a>
+      </div>
+
+      <div id="lib-song-list" style="max-height:300px; overflow-y:auto">
+        <p style="color:var(--text-secondary); font-size:0.85rem">載入中...</p>
+      </div>
+
+      <script>
+        $(function() {
+          $.getJSON("/play_stats/top?n=999", function(data) {
+            var songs = data || [];
+            var html = "";
+            if (!songs.length) {
+              html = '<p style="color:var(--text-secondary); font-size:0.85rem">尚無播放紀錄</p>';
+            }
+            songs.forEach(function(s) {
+              html += '<div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05)">';
+              html += '<span style="flex:1; font-size:0.85rem; color:var(--text-primary)">' + $("<span>").text(s.title).html() + '</span>';
+              html += '<span style="font-size:0.75rem; color:var(--accent-cyan); white-space:nowrap">' + s.count + ' 次</span>';
+              html += '</div>';
+            });
+            $("#lib-song-list").html(html);
+          });
+          // Count songs and artists from songpicker
+          $.get("/songpicker", function(page) {
+            var m = page.match(/共 <b>(\d+)<\/b> 首歌曲/);
+            if (m) $("#lib-song-count").text(m[1]);
+          });
+        });
+      </script>
+    </div>
+  </div>
+
   {% if admin %}
   <!-- Admin card -->
   <div class="accordion-card glass">
