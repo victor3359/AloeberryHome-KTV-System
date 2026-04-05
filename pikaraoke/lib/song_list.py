@@ -103,6 +103,8 @@ class SongList:
             True if the file exists and has a valid extension.
         """
         ext = os.path.splitext(file_path)[1].lower()
+        if os.path.basename(file_path).endswith(("_vocals.mp3", "_instrumental.mp3")):
+            return False
         return ext in self.VALID_EXTENSIONS and os.path.isfile(file_path)
 
     def add_if_valid(self, song_path: str) -> bool:
@@ -158,6 +160,9 @@ class SongList:
             for filename in filenames:
                 ext = os.path.splitext(filename)[1].lower()
                 if ext in self.VALID_EXTENSIONS:
+                    # Skip vocal separation stem files (companions, not songs)
+                    if filename.endswith(("_vocals.mp3", "_instrumental.mp3")):
+                        continue
                     file_path = os.path.join(dirpath, filename)
                     if os.path.isfile(file_path):
                         logging.debug(f"Found song: {filename}")

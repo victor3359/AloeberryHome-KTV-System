@@ -52,6 +52,8 @@ def audio_mode(mode):
         # Instant switch via HLS.js audio track — no re-transcoding
         k.playback_controller.now_playing_audio_mode = mode
         broadcast_event("audio_mode_switch", mode)
+        # Sync UI state across ALL connected clients
+        k.update_now_playing_socket()
     else:
         # Fallback: re-queue with seek position
         broadcast_event("skip", "audio mode change")

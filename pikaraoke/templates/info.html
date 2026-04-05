@@ -115,15 +115,22 @@
     </div>
     <div class="accordion-body">
 
-      <h4 style="margin-bottom:12px">{% trans %}Splash screen{% endtrans %}</h4>
-      <div class="pref-row"><input id="pref-bg-video" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_bg_video" {% if disable_bg_video %}checked{% endif %}><label class="pref-label" for="pref-bg-video">{% trans %}Disable background video{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-bg-music" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_bg_music" {% if disable_bg_music %}checked{% endif %}><label class="pref-label" for="pref-bg-music">{% trans %}Disable background music{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-score" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_score" {% if disable_score %}checked{% endif %}><label class="pref-label" for="pref-score">{% trans %}Disable score screen{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-notifications" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_notifications" {% if hide_notifications %}checked{% endif %}><label class="pref-label" for="pref-notifications">{% trans %}Hide notifications{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-splash-clock" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="show_splash_clock" {% if show_splash_clock %}checked{% endif %}><label class="pref-label" for="pref-splash-clock">{% trans %}Show clock{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-qr-code" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_url" {% if hide_url %}checked{% endif %}><label class="pref-label" for="pref-qr-code">{% trans %}Hide URL & QR{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-overlay" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_overlay" {% if hide_overlay %}checked{% endif %}><label class="pref-label" for="pref-overlay">{% trans %}Hide all overlays{% endtrans %}</label></div>
+      <h4 style="margin-bottom:12px"><i class="icon icon-mic-1"></i> {% trans %}Session{% endtrans %}</h4>
+      <div class="pref-row"><input id="pref-fair-queue" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="enable_fair_queue" {% if enable_fair_queue %}checked{% endif %}><label class="pref-label" for="pref-fair-queue">{% trans %}Take turns (rotate singers){% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-auto-dj" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="auto_dj" {% if auto_dj %}checked{% endif %}><label class="pref-label" for="pref-auto-dj">{% trans %}Auto-DJ (random songs when queue empty){% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-limit" class="pref-input user-preference-input" type="number" min="0" max="99" data-pref="limit_user_songs_by" data-start-value="{{ limit_user_songs_by }}" value="{{ limit_user_songs_by }}"><label class="pref-label" for="pref-limit">{% trans %}Max songs per person (0 = unlimited){% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-splash-delay" class="pref-input user-preference-input" type="number" min="0" max="99" data-pref="splash_delay" data-start-value="{{ splash_delay }}" value="{{ splash_delay }}"><label class="pref-label" for="pref-splash-delay">{% trans %}Pause between songs (seconds){% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-score" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_score" {% if disable_score %}checked{% endif %}><label class="pref-label" for="pref-score">{% trans %}Turn off score screen{% endtrans %}</label></div>
 
+      <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
+      <h4 style="margin-bottom:12px"><i class="icon icon-volume-up"></i> {% trans %}Audio{% endtrans %}</h4>
+      <div class="pref-row"><input id="pref-volume" class="pref-input user-preference-input" type="number" min="0" max="100" step="5" data-pref="volume" data-start-value="{{ volume }}" value="{{ volume }}"><label class="pref-label" for="pref-volume">{% trans %}Playback volume{% endtrans %} (0-100)</label></div>
+      <div class="pref-row"><input id="bg-music-volume" class="pref-input user-preference-input" type="number" min="0" max="100" step="5" data-pref="bg_music_volume" data-start-value="{{ bg_music_volume }}" value="{{ bg_music_volume }}"><label class="pref-label" for="bg-music-volume">{% trans %}Background music volume{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-normalize" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="normalize_audio" {% if normalize_audio %}checked{% endif %}><label class="pref-label" for="pref-normalize">{% trans %}Equalize volume levels{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-high-quality" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="high_quality" {% if high_quality %}checked{% endif %}><label class="pref-label" for="pref-high-quality">{% trans %}Download in high quality (1080p){% endtrans %}</label></div>
+
+      <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
+      <h4 style="margin-bottom:12px"><i class="icon icon-cog"></i> {% trans %}Display{% endtrans %}</h4>
       <div class="pref-row">
         <select id="pref-theme" class="pref-input user-preference-input" data-pref="splash_theme" data-start-value="{{ splash_theme|default('classic') }}" style="width:auto">
           <option value="classic" {% if splash_theme|default('classic') == 'classic' %}selected{% endif %}>Classic</option>
@@ -131,51 +138,54 @@
           <option value="romantic" {% if splash_theme == 'romantic' %}selected{% endif %}>Romantic</option>
           <option value="neon" {% if splash_theme == 'neon' %}selected{% endif %}>Neon</option>
         </select>
-        <label class="pref-label" for="pref-theme">Splash theme</label>
+        <label class="pref-label" for="pref-theme">{% trans %}TV theme{% endtrans %}</label>
       </div>
-
-      <div class="pref-row"><input id="pref-volume" class="pref-input user-preference-input" type="number" min="0" max="100" step="5" data-pref="volume" data-start-value="{{ volume }}" value="{{ volume }}"><label class="pref-label" for="pref-volume">{% trans %}Volume{% endtrans %} (0-100)</label></div>
-      <div class="pref-row"><input id="bg-music-volume" class="pref-input user-preference-input" type="number" min="0" max="100" step="5" data-pref="bg_music_volume" data-start-value="{{ bg_music_volume }}" value="{{ bg_music_volume }}"><label class="pref-label" for="bg-music-volume">{% trans %}BG music volume{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-screensaver-timeout" class="pref-input user-preference-input" type="number" min="0" max="999" data-pref="screensaver_timeout" data-start-value="{{ screensaver_timeout }}" value="{{ screensaver_timeout }}"><label class="pref-label" for="pref-screensaver-timeout">{% trans %}Screensaver timeout (s){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-splash-delay" class="pref-input user-preference-input" type="number" min="0" max="99" data-pref="splash_delay" data-start-value="{{ splash_delay }}" value="{{ splash_delay }}"><label class="pref-label" for="pref-splash-delay">{% trans %}Delay between songs (s){% endtrans %}</label></div>
-
-      <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
-      <h4 style="margin-bottom:12px">{% trans %}Server{% endtrans %}</h4>
-      <div class="pref-row"><input id="pref-normalize" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="normalize_audio" {% if normalize_audio %}checked{% endif %}><label class="pref-label" for="pref-normalize">{% trans %}Normalize audio{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-high-quality" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="high_quality" {% if high_quality %}checked{% endif %}><label class="pref-label" for="pref-high-quality">{% trans %}High quality downloads{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-transcode" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="complete_transcode_before_play" {% if complete_transcode_before_play %}checked{% endif %}><label class="pref-label" for="pref-transcode">{% trans %}Complete transcode before play{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-cdg" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="cdg_pixel_scaling" {% if cdg_pixel_scaling %}checked{% endif %}><label class="pref-label" for="pref-cdg">{% trans %}CDG pixel scaling{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-fair-queue" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="enable_fair_queue" {% if enable_fair_queue %}checked{% endif %}><label class="pref-label" for="pref-fair-queue">{% trans %}Fair queue (round-robin){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-auto-dj" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="auto_dj" {% if auto_dj %}checked{% endif %}><label class="pref-label" for="pref-auto-dj">Auto-DJ</label></div>
-
-      <div class="pref-row"><input id="pref-avsync" class="pref-input user-preference-input" type="number" step="0.1" min="-10" max="10" data-pref="avsync" data-start-value="{{ avsync }}" value="{{ avsync }}"><label class="pref-label" for="pref-avsync">{% trans %}A/V sync (s){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-limit" class="pref-input user-preference-input" type="number" min="0" max="99" data-pref="limit_user_songs_by" data-start-value="{{ limit_user_songs_by }}" value="{{ limit_user_songs_by }}"><label class="pref-label" for="pref-limit">{% trans %}Song limit per user (0=unlimited){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-buffer" class="pref-input user-preference-input" type="number" min="0" max="9999" data-pref="buffer_size" data-start-value="{{ buffer_size }}" value="{{ buffer_size }}"><label class="pref-label" for="pref-buffer">{% trans %}Buffer size (KB){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-per-page" class="pref-input user-preference-input" type="number" min="10" max="1000" step="10" data-pref="browse_results_per_page" data-start-value="{{ browse_results_per_page }}" value="{{ browse_results_per_page }}"><label class="pref-label" for="pref-per-page">{% trans %}Results per page{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-splash-clock" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="show_splash_clock" {% if show_splash_clock %}checked{% endif %}><label class="pref-label" for="pref-splash-clock">{% trans %}Show clock on TV{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-qr-code" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_url" {% if hide_url %}checked{% endif %}><label class="pref-label" for="pref-qr-code">{% trans %}Hide QR code{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-overlay" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_overlay" {% if hide_overlay %}checked{% endif %}><label class="pref-label" for="pref-overlay">{% trans %}Hide all TV overlays{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-notifications" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_notifications" {% if hide_notifications %}checked{% endif %}><label class="pref-label" for="pref-notifications">{% trans %}Hide notifications{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-bg-video" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_bg_video" {% if disable_bg_video %}checked{% endif %}><label class="pref-label" for="pref-bg-video">{% trans %}Turn off idle background video{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-bg-music" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_bg_music" {% if disable_bg_music %}checked{% endif %}><label class="pref-label" for="pref-bg-music">{% trans %}Turn off idle background music{% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-screensaver-timeout" class="pref-input user-preference-input" type="number" min="0" max="999" data-pref="screensaver_timeout" data-start-value="{{ screensaver_timeout }}" value="{{ screensaver_timeout }}"><label class="pref-label" for="pref-screensaver-timeout">{% trans %}Screensaver after idle (seconds, 0 = off){% endtrans %}</label></div>
 
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
-      <h4 style="margin-bottom:12px">{% trans %}Language{% endtrans %}</h4>
+      <h4 style="margin-bottom:12px"><i class="icon icon-info-circled"></i> {% trans %}Language{% endtrans %}</h4>
       <div class="pref-row">
         <select id="pref-language" class="pref-input user-preference-input" data-pref="preferred_language" data-start-value="{{ preferred_language }}" style="width:auto">
           {% for lang_code, lang_name in languages.items() %}
           <option value="{{ lang_code }}" {% if preferred_language == lang_code %}selected{% endif %}>{{ lang_name }}</option>
           {% endfor %}
         </select>
-        <label class="pref-label" for="pref-language">{% trans %}Preferred language (restart required){% endtrans %}</label>
+        <label class="pref-label" for="pref-language">{% trans %}Interface language (restart required){% endtrans %}</label>
       </div>
 
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
-      <h4 style="margin-bottom:12px">{% trans %}Score phrases{% endtrans %}</h4>
-      <p class="has-text-grey" style="font-size:0.85rem; margin-bottom:8px">{% trans %}Add one phrase per line{% endtrans %}</p>
-      <label style="font-size:0.85rem; color:var(--text-secondary)">LOW (&lt;30)</label>
-      <textarea id="low-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.low | replace('|', '\n') }}</textarea>
-      <label style="font-size:0.85rem; color:var(--text-secondary)">MID (30-60)</label>
-      <textarea id="mid-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.mid | replace('|', '\n') }}</textarea>
-      <label style="font-size:0.85rem; color:var(--text-secondary)">HIGH (&gt;60)</label>
-      <textarea id="high-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.high | replace('|', '\n') }}</textarea>
-      <button id="save-phrases" class="pill active" style="width:100%; margin-top:12px; padding:12px; text-align:center">{% trans %}Save phrases{% endtrans %}</button>
+      <details style="margin-bottom:12px">
+        <summary style="cursor:pointer; color:var(--text-secondary); font-size:0.85rem"><i class="icon icon-cog"></i> {% trans %}Advanced{% endtrans %}</summary>
+        <div style="margin-top:12px">
+          <div class="pref-row"><input id="pref-avsync" class="pref-input user-preference-input" type="number" step="0.1" min="-10" max="10" data-pref="avsync" data-start-value="{{ avsync }}" value="{{ avsync }}"><label class="pref-label" for="pref-avsync" title="{% trans %}Negative = audio earlier, positive = audio later{% endtrans %}">{% trans %}Audio delay (seconds){% endtrans %}</label></div>
+          <div class="pref-row"><input id="pref-buffer" class="pref-input user-preference-input" type="number" min="0" max="9999" data-pref="buffer_size" data-start-value="{{ buffer_size }}" value="{{ buffer_size }}"><label class="pref-label" for="pref-buffer">{% trans %}Stream buffer (KB){% endtrans %}</label></div>
+          <div class="pref-row"><input id="pref-transcode" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="complete_transcode_before_play" {% if complete_transcode_before_play %}checked{% endif %}><label class="pref-label" for="pref-transcode">{% trans %}Wait for full processing before play{% endtrans %}</label></div>
+          <div class="pref-row"><input id="pref-cdg" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="cdg_pixel_scaling" {% if cdg_pixel_scaling %}checked{% endif %}><label class="pref-label" for="pref-cdg">{% trans %}CDG pixel scaling (legacy format){% endtrans %}</label></div>
+          <div class="pref-row"><input id="pref-per-page" class="pref-input user-preference-input" type="number" min="10" max="1000" step="10" data-pref="browse_results_per_page" data-start-value="{{ browse_results_per_page }}" value="{{ browse_results_per_page }}"><label class="pref-label" for="pref-per-page">{% trans %}Songs per page{% endtrans %}</label></div>
+        </div>
+      </details>
 
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
+      <details style="margin-bottom:12px">
+        <summary style="cursor:pointer; color:var(--text-secondary); font-size:0.85rem"><i class="icon icon-edit"></i> {% trans %}Score phrases{% endtrans %}</summary>
+        <div style="margin-top:12px">
+          <p class="has-text-grey" style="font-size:0.85rem; margin-bottom:8px">{% trans %}Add one phrase per line{% endtrans %}</p>
+          <label style="font-size:0.85rem; color:var(--text-secondary)">LOW (&lt;30)</label>
+          <textarea id="low-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.low | replace('|', '\n') }}</textarea>
+          <label style="font-size:0.85rem; color:var(--text-secondary)">MID (30-60)</label>
+          <textarea id="mid-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.mid | replace('|', '\n') }}</textarea>
+          <label style="font-size:0.85rem; color:var(--text-secondary)">HIGH (&gt;60)</label>
+          <textarea id="high-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.high | replace('|', '\n') }}</textarea>
+          <button id="save-phrases" class="pill active" style="width:100%; margin-top:12px; padding:12px; text-align:center">{% trans %}Save phrases{% endtrans %}</button>
+        </div>
+      </details>
+
       <a id="clear-preferences-link" class="pill" style="border:1px solid var(--danger); color:var(--danger); display:inline-block" href="{{ url_for('preferences.clear_preferences') }}">{% trans %}Clear preferences{% endtrans %}</a>
     </div>
   </div>

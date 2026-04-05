@@ -44,36 +44,60 @@ def build_multi_audio_hls_cmd(
         cmd += ["-ss", str(start_position)]
     cmd += ["-i", fr.vocals_path]
 
-    # Build audio filter chain
-    is_transposed = semitones != 0
-    audio_chain = ""
+    # Build per-input filter chains (apply pitch/sync BEFORE splitting)
+    is_transposed = semitones != 0 and is_transpose_enabled()
+    pre_filters = ""  # Applied to each input before routing
     if avsync > 0:
-        audio_chain += f"adelay={avsync * 1000}|{avsync * 1000},"
+        pre_filters += f"adelay={avsync * 1000}|{avsync * 1000},"
     elif avsync < 0:
-        audio_chain += f"atrim=start={-avsync},"
+        pre_filters += f"atrim=start={-avsync},"
     if is_transposed:
-        audio_chain += f"rubberband=pitch={2 ** (semitones / 12)},"
-    if normalize_audio:
-        audio_chain += "loudnorm=i=-16:tp=-1.5:lra=11,"
-    audio_chain = audio_chain.rstrip(",")
+        pre_filters += f"rubberband=pitch={2 ** (semitones / 12)},"
 
-    # Filter complex: guide audio = instrumental + vocals at 30%
-    # Use asplit on [1:a] since it feeds both instrumental output and guide mix
-    if audio_chain:
-        fc = (
-            f"[0:a]{audio_chain}[aOrig];"
-            f"[1:a]asplit=2[i1][i2];"
-            f"[i1]{audio_chain}[aInst];"
-            f"[2:a]volume=0.3,{audio_chain}[vq];"
-            f"[i2]{audio_chain}[iq];"
-            f"[iq][vq]amix=inputs=2:duration=longest[aGuide]"
-        )
-        cmd += ["-filter_complex", fc]
+    post_filter = ""  # Applied after routing (normalization)
+    if normalize_audio:
+        post_filter = "loudnorm=i=-16:tp=-1.5:lra=11"
+
+    def chain(*parts: str) -> str:
+        return ",".join(p for p in parts if p)
+
+    # Filter complex: process each input, then split instrumental for guide mix
+    # Apply pitch/sync to inputs first, then asplit, then normalize outputs
+    fc_parts = []
+
+    # Original audio: input 0
+    orig_chain = chain(pre_filters.rstrip(","), post_filter)
+    if orig_chain:
+        fc_parts.append(f"[0:a]{orig_chain}[aOrig]")
+
+    # Instrumental: input 1 → pre-process → asplit → one for output, one for guide mix
+    inst_pre = pre_filters.rstrip(",")
+    if inst_pre or post_filter:
+        fc_parts.append(f"[1:a]{chain(inst_pre)}[i_pre]")
+        fc_parts.append("[i_pre]asplit=2[i1][i2]")
+        if post_filter:
+            fc_parts.append(f"[i1]{post_filter}[aInst]")
+            fc_parts.append(f"[i2]{post_filter}[iq]")
+        else:
+            fc_parts.append("[i1]acopy[aInst]")
+            fc_parts.append("[i2]acopy[iq]")
+    else:
+        fc_parts.append("[1:a]asplit=2[aInst][iq]")
+
+    # Vocals: input 2 → pre-process → volume 50% → normalize
+    voc_chain = chain(pre_filters.rstrip(","), "volume=0.5", post_filter)
+    fc_parts.append(f"[2:a]{voc_chain}[vq]")
+
+    # Guide mix: instrumental + quiet vocals
+    fc_parts.append("[iq][vq]amix=inputs=2:duration=longest[aGuide]")
+
+    fc = ";".join(fc_parts)
+    cmd += ["-filter_complex", fc]
+
+    if orig_chain:
         cmd += ["-map", "0:v", "-map", "[aOrig]", "-map", "[aInst]", "-map", "[aGuide]"]
     else:
-        fc = "[2:a]volume=0.3[vq];[1:a][vq]amix=inputs=2:duration=longest[aGuide]"
-        cmd += ["-filter_complex", fc]
-        cmd += ["-map", "0:v", "-map", "0:a", "-map", "1:a", "-map", "[aGuide]"]
+        cmd += ["-map", "0:v", "-map", "0:a", "-map", "[aInst]", "-map", "[aGuide]"]
 
     # Codecs
     vcodec = "copy" if fr.file_extension == ".mp4" else "libx264"
@@ -213,7 +237,7 @@ def build_ffmpeg_cmd(
     ):
         instrumental_input = ffmpeg.input(fr.instrumental_path, **stem_kwargs)
         vocals_input = ffmpeg.input(fr.vocals_path, **stem_kwargs)
-        vocals_quiet = vocals_input.audio.filter("volume", 0.3)
+        vocals_quiet = vocals_input.audio.filter("volume", 0.5)
         audio = ffmpeg.filter(
             [instrumental_input.audio, vocals_quiet], "amix", inputs=2, duration="longest"
         )
