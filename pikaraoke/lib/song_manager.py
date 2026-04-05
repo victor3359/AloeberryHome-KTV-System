@@ -86,8 +86,19 @@ class SongManager:
         companions = self._get_companion_files(song_path)
         _, ext = os.path.splitext(song_path)
         new_path = os.path.join(self.download_path, new_name + ext)
+        if os.path.exists(new_path) and new_path != song_path:
+            os.remove(new_path)
         os.rename(song_path, new_path)
+        old_base = os.path.splitext(os.path.basename(song_path))[0]
         for companion in companions:
-            companion_ext = os.path.splitext(companion)[1]
-            os.rename(companion, os.path.join(self.download_path, new_name + companion_ext))
+            comp_basename = os.path.basename(companion)
+            # Preserve the suffix after the old base name (e.g., _vocals.mp3, _karaoke.ass)
+            if comp_basename.startswith(old_base):
+                suffix = comp_basename[len(old_base) :]
+            else:
+                suffix = os.path.splitext(comp_basename)[1]
+            new_comp_path = os.path.join(self.download_path, new_name + suffix)
+            if os.path.exists(new_comp_path):
+                os.remove(new_comp_path)
+            os.rename(companion, new_comp_path)
         self.songs.rename(song_path, new_path)
