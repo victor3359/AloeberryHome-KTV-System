@@ -573,8 +573,8 @@ class VocalSeparator:
             env = {
                 **os.environ,
                 "PYTHONIOENCODING": "utf-8",
-                "OMP_NUM_THREADS": "6",
-                "MKL_NUM_THREADS": "6",
+                "OMP_NUM_THREADS": "10",
+                "MKL_NUM_THREADS": "10",
             }
             # Lower priority on Windows so playback isn't starved
             creationflags = 0x00004000 if sys.platform == "win32" else 0
@@ -670,21 +670,13 @@ class VocalSeparator:
             import torch
             import whisper
 
-            device = self._device
-            if device == "cuda" and not torch.cuda.is_available():
-                logging.warning("CUDA not available for Whisper, falling back to CPU")
-                device = "cpu"
+            # Force Whisper to CPU so GPU stays free for video playback
+            # (same reasoning as Demucs — GPU can't be throttled per-process)
+            device = "cpu"
             import warnings
 
             warnings.filterwarnings("ignore", message=".*Triton.*")
-            # Limit resources to avoid starving playback
-            torch.set_num_threads(2)
-            if torch.cuda.is_available():
-                # Only limit VRAM on GPUs with >= 8GB (smaller GPUs need all memory)
-                vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                if vram_gb >= 8:
-                    torch.cuda.set_per_process_memory_fraction(0.5)
-                    logging.info("GPU VRAM limited to 50%% (%.1fGB available)", vram_gb)
+            torch.set_num_threads(10)  # 10 of 16 cores for fast transcription
             # Cache model globally to avoid reloading 400MB per song
             cache_key = f"{self._whisper_model}_{device}"
             if not hasattr(VocalSeparator, "_whisper_cache"):
