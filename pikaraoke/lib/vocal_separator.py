@@ -573,8 +573,8 @@ class VocalSeparator:
             env = {
                 **os.environ,
                 "PYTHONIOENCODING": "utf-8",
-                "OMP_NUM_THREADS": "2",
-                "MKL_NUM_THREADS": "2",
+                "OMP_NUM_THREADS": "6",
+                "MKL_NUM_THREADS": "6",
             }
             # Lower priority on Windows so playback isn't starved
             creationflags = 0x00004000 if sys.platform == "win32" else 0
