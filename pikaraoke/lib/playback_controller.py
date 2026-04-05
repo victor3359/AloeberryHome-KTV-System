@@ -100,6 +100,7 @@ class PlaybackController:
         Returns:
             PlaybackResult with success status and stream information.
         """
+        # Lock only for state mutation, NOT for client wait (avoids deadlock with start_song)
         with self._lock:
             logging.info(
                 f"Playing file: {file_path} for user: {user}, transposed {semitones} semitones"
@@ -124,20 +125,20 @@ class PlaybackController:
 
             self.events.emit("playback_started")
 
-            # Wait for client to connect (multi-audio HLS needs more time for initial segments)
-            max_retries = 300
-            while not self.is_playing and max_retries > 0:
-                time.sleep(0.1)
-                max_retries -= 1
+        # Wait for client OUTSIDE the lock so start_song() can acquire it
+        max_retries = 300
+        while not self.is_playing and max_retries > 0:
+            time.sleep(0.1)
+            max_retries -= 1
 
-            if not self.is_playing:
-                error_msg = _("Stream was not playable! Skipping track")
-                logging.error(error_msg)
-                self.end_song(reason="timeout")
-                return PlaybackResult(success=False, error=error_msg)
+        if not self.is_playing:
+            error_msg = _("Stream was not playable! Skipping track")
+            logging.error(error_msg)
+            self.end_song(reason="timeout")
+            return PlaybackResult(success=False, error=error_msg)
 
-            logging.debug("Stream is playing")
-            return result
+        logging.debug("Stream is playing")
+        return result
 
     def start_song(self) -> None:
         """Mark the current song as actively playing.
