@@ -194,7 +194,7 @@ class VocalSeparator:
         events: EventSystem,
         download_path: str,
         device: str = "cuda",
-        whisper_model: str = "large",
+        whisper_model: str = "medium",
     ) -> None:
         self._events = events
         self._download_path = download_path
