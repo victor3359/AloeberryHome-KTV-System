@@ -15,6 +15,112 @@ if TYPE_CHECKING:
     from pikaraoke.lib.file_resolver import FileResolver
 
 
+def build_multi_audio_hls_cmd(
+    fr: "FileResolver",
+    semitones: int = 0,
+    normalize_audio: bool = True,
+    avsync: float = 0,
+    start_position: float = 0,
+) -> list[str]:
+    """Build FFmpeg command for HLS with multiple audio tracks (original + instrumental + guide).
+
+    Returns a command list for subprocess.Popen (bypasses ffmpeg-python because
+    it doesn't support -var_stream_map).
+    """
+    cmd = ["ffmpeg", "-y"]
+
+    # Input 0: main video file
+    if start_position > 0:
+        cmd += ["-ss", str(start_position)]
+    cmd += ["-i", fr.file_path]
+
+    # Input 1: instrumental stem
+    if start_position > 0:
+        cmd += ["-ss", str(start_position)]
+    cmd += ["-i", fr.instrumental_path]
+
+    # Input 2: vocals stem (for guide mode mixing)
+    if start_position > 0:
+        cmd += ["-ss", str(start_position)]
+    cmd += ["-i", fr.vocals_path]
+
+    # Filter complex: create guide audio (instrumental + vocals at 30%)
+    filter_parts = []
+    # Pitch shift all audio tracks if transposed
+    is_transposed = semitones != 0
+    pitch_filter = ""
+    if is_transposed:
+        pitch = 2 ** (semitones / 12)
+        pitch_filter = f",rubberband=pitch={pitch}"
+
+    norm_filter = ""
+    if normalize_audio:
+        norm_filter = ",loudnorm=i=-16:tp=-1.5:lra=11"
+
+    avsync_filter = ""
+    if avsync > 0:
+        avsync_filter = f",adelay={avsync * 1000}|{avsync * 1000}"
+    elif avsync < 0:
+        avsync_filter = f",atrim=start={-avsync}"
+
+    # Audio processing chains
+    audio_filters = f"{avsync_filter}{pitch_filter}{norm_filter}"
+
+    # Original audio (from video file)
+    filter_parts.append(f"[0:a]{audio_filters.lstrip(',')}[aOriginal]" if audio_filters else "")
+    # Instrumental audio
+    filter_parts.append(f"[1:a]{audio_filters.lstrip(',')}[aInstrumental]" if audio_filters else "")
+    # Guide: instrumental + vocals at 30%
+    filter_parts.append(
+        f"[2:a]volume=0.3{audio_filters}[vq];[1:a]{audio_filters.lstrip(',')}[iq];"
+        f"[iq][vq]amix=inputs=2:duration=longest[aGuide]"
+    )
+
+    # Determine if we need filter_complex
+    if audio_filters:
+        filter_str = ";".join(p for p in filter_parts if p)
+        cmd += ["-filter_complex", filter_str]
+        # Map video + 3 processed audio streams
+        cmd += ["-map", "0:v", "-map", "[aOriginal]", "-map", "[aInstrumental]", "-map", "[aGuide]"]
+    else:
+        # No audio processing needed — simple guide mix only
+        cmd += [
+            "-filter_complex",
+            "[2:a]volume=0.3[vq];[1:a][vq]amix=inputs=2:duration=longest[aGuide]",
+        ]
+        cmd += ["-map", "0:v", "-map", "0:a", "-map", "1:a", "-map", "[aGuide]"]
+
+    # Video codec: copy if MP4, otherwise transcode
+    vcodec = "copy" if fr.file_extension == ".mp4" else "libx264"
+    if supports_hardware_h264_encoding():
+        vcodec = "h264_v4l2m2m" if vcodec != "copy" else "copy"
+
+    cmd += ["-c:v", vcodec, "-c:a", "aac", "-b:a", "192k"]
+
+    # HLS output with variant streams
+    cmd += [
+        "-f",
+        "hls",
+        "-hls_time",
+        "3",
+        "-hls_segment_type",
+        "fmp4",
+        "-hls_playlist_type",
+        "event",
+        "-var_stream_map",
+        "v:0,a:0,name:original v:0,a:1,name:instrumental v:0,a:2,name:guide",
+        "-master_pl_name",
+        f"{fr.stream_uid}_master.m3u8",
+        "-hls_segment_filename",
+        f"{fr.tmp_dir}/{fr.stream_uid}_%v_%03d.m4s",
+        "-hls_fmp4_init_filename",
+        f"{fr.stream_uid}_%v_init.mp4",
+        f"{fr.tmp_dir}/{fr.stream_uid}_%v.m3u8",
+    ]
+
+    return cmd
+
+
 def get_media_duration(file_path: str) -> int | None:
     """Get the duration of a media file in seconds.
 

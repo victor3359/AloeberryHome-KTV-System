@@ -13,7 +13,7 @@ from threading import Thread
 from typing import Any
 
 from pikaraoke.lib.events import EventSystem
-from pikaraoke.lib.ffmpeg import build_ffmpeg_cmd
+from pikaraoke.lib.ffmpeg import build_ffmpeg_cmd, build_multi_audio_hls_cmd
 from pikaraoke.lib.file_resolver import FileResolver, is_transcoding_required
 from pikaraoke.lib.preference_manager import PreferenceManager
 
@@ -34,6 +34,7 @@ class PlaybackResult:
     stream_url: str | None = None
     subtitle_url: str | None = None
     duration: int | None = None
+    has_multi_audio: bool = False
     error: str | None = None
 
 
@@ -121,8 +122,21 @@ class StreamManager:
             logging.error(error_message)
             return PlaybackResult(success=False, error=error_message)
 
+        # Check if multi-audio HLS is possible (stems exist + HLS mode)
+        instrumental = getattr(fr, "instrumental_path", None)
+        vocals = getattr(fr, "vocals_path", None)
+        has_multi_audio = (
+            is_hls
+            and isinstance(instrumental, str)
+            and isinstance(vocals, str)
+            and os.path.exists(instrumental)
+            and os.path.exists(vocals)
+        )
+
         # Set stream URL based on format
-        if is_hls:
+        if has_multi_audio:
+            stream_url_path = f"/stream/{fr.stream_uid}_master.m3u8"
+        elif is_hls:
             stream_url_path = f"/stream/{fr.stream_uid}.m3u8"
         else:
             if complete_transcode_before_play or not requires_transcoding:
@@ -133,6 +147,10 @@ class StreamManager:
         if not requires_transcoding:
             is_transcoding_complete = self._copy_file(file_path, fr.output_file)
             is_buffering_complete = True
+        elif has_multi_audio:
+            is_transcoding_complete, is_buffering_complete = self._transcode_multi_audio(
+                fr, semitones, start_position
+            )
         else:
             is_transcoding_complete, is_buffering_complete = self._transcode_file(
                 fr, semitones, is_hls, audio_mode, start_position
@@ -151,11 +169,72 @@ class StreamManager:
                 stream_url=stream_url_path,
                 subtitle_url=subtitle_url,
                 duration=fr.duration,
+                has_multi_audio=has_multi_audio,
             )
         else:
             error_message = _("Failed to prepare stream")
             logging.error(error_message)
             return PlaybackResult(success=False, error=error_message)
+
+    def _transcode_multi_audio(
+        self, fr: FileResolver, semitones: int, start_position: float = 0
+    ) -> tuple[bool, bool]:
+        """Transcode with multiple audio tracks (original + instrumental + guide).
+
+        Uses subprocess directly (not ffmpeg-python) for -var_stream_map support.
+        """
+        self.kill_ffmpeg()
+
+        normalize_audio = self.preferences.get_or_default("normalize_audio")
+        avsync = self.preferences.get_or_default("avsync")
+        buffer_size = int(self.preferences.get_or_default("buffer_size")) * 1000
+
+        cmd = build_multi_audio_hls_cmd(
+            fr,
+            semitones=semitones,
+            normalize_audio=normalize_audio,
+            avsync=avsync,
+            start_position=start_position,
+        )
+
+        logging.info("Starting multi-audio HLS transcode: %s", " ".join(cmd[:10]) + "...")
+        self.ffmpeg_process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+
+        self.ffmpeg_log = Queue()
+        t = Thread(
+            target=enqueue_output,
+            args=(self.ffmpeg_process.stderr, self.ffmpeg_log),
+            daemon=True,
+        )
+        t.start()
+
+        # Wait for initial segments to be generated
+        stream_uid_str = str(fr.stream_uid)
+        max_retries = 200
+        while max_retries > 0:
+            if self.ffmpeg_process.poll() is not None:
+                logging.debug("FFmpeg process ended during buffer wait")
+                break
+            # Check for variant segments (any variant)
+            segment_files = [
+                f for f in os.listdir(fr.tmp_dir) if stream_uid_str in f and f.endswith(".m4s")
+            ]
+            if len(segment_files) >= 3:
+                logging.debug("Multi-audio HLS buffer ready (%d segments)", len(segment_files))
+                return True, True
+            current_size = sum(
+                os.path.getsize(os.path.join(fr.tmp_dir, f))
+                for f in os.listdir(fr.tmp_dir)
+                if stream_uid_str in f
+            )
+            if current_size > buffer_size:
+                logging.debug("Multi-audio HLS buffer size met (%d bytes)", current_size)
+                return True, True
+            max_retries -= 1
+            time.sleep(0.1)
+
+        is_complete = self.ffmpeg_process.poll() is not None
+        return is_complete, is_complete
 
     def _copy_file(self, src_path: str, dest_path: str) -> bool:
         """Copy a file that doesn't need transcoding.

@@ -43,6 +43,7 @@ class PlaybackController:
     now_playing_user2: str | None = None
     now_playing_transpose: int = 0
     now_playing_audio_mode: str = "original"
+    supports_multi_audio: bool = False
     now_playing_duration: int | None = None
     now_playing_url: str | None = None
     now_playing_subtitle_url: str | None = None
@@ -112,6 +113,7 @@ class PlaybackController:
         self.now_playing_user2 = user2
         self.now_playing_transpose = semitones
         self.now_playing_audio_mode = audio_mode
+        self.supports_multi_audio = result.has_multi_audio
         self.now_playing_duration = result.duration
         self.now_playing_url = result.stream_url
         self.now_playing_subtitle_url = result.subtitle_url
@@ -222,6 +224,7 @@ class PlaybackController:
             "now_playing_subtitle_url": self.now_playing_subtitle_url,
             "now_playing_position": self.now_playing_position,
             "now_playing_audio_mode": self.now_playing_audio_mode,
+            "supports_multi_audio": self.supports_multi_audio,
             "is_paused": self.is_paused,
         }
 
@@ -237,6 +240,7 @@ class PlaybackController:
         self.is_playing = False
         self.now_playing_transpose = 0
         self.now_playing_audio_mode = "original"
+        self.supports_multi_audio = False
         self.now_playing_duration = None
         self.now_playing_position = None
 

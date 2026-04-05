@@ -44,12 +44,18 @@ def transpose(semitones):
 
 @controller_bp.route("/audio_mode/<mode>", methods=["GET"])
 def audio_mode(mode):
-    """Switch audio mode for the current song (original/instrumental/guide)."""
+    """Switch audio mode — instant if multi-audio HLS, or re-queue if single."""
     if mode not in ("original", "instrumental", "guide"):
         return "Invalid audio mode", 400
     k = get_karaoke_instance()
-    broadcast_event("skip", "audio mode change")
-    k.change_audio_mode(mode)
+    if k.playback_controller.supports_multi_audio:
+        # Instant switch via HLS.js audio track — no re-transcoding
+        k.playback_controller.now_playing_audio_mode = mode
+        broadcast_event("audio_mode_switch", mode)
+    else:
+        # Fallback: re-queue with seek position
+        broadcast_event("skip", "audio mode change")
+        k.change_audio_mode(mode)
     return redirect(url_for("queue.queue"))
 
 

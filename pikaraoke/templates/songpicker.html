@@ -134,9 +134,9 @@ $(function () {
     e.preventDefault();
     var term = $(".search-selectize .selectize-input input").val();
     if (!term) return;
-    var nonKtv = $("#chk-non-karaoke").is(":checked");
+    var karaokeSearch = $("#chk-karaoke-search").is(":checked");
     $("#hidden-search-string").val(term);
-    $("#hidden-non-karaoke").val(nonKtv ? "true" : "");
+    $("#hidden-karaoke-search").val(karaokeSearch ? "true" : "");
     $("#searching-loader").show();
     $("#search-form-hidden").submit();
   });
@@ -294,8 +294,8 @@ $(function () {
       </select>
     </div>
     <label class="sp-nonktv-check">
-      <input type="checkbox" id="chk-non-karaoke" name="non_karaoke" value="true"{% if non_karaoke %} checked{% endif %}>
-      <span>Non-KTV</span>
+      <input type="checkbox" id="chk-karaoke-search" name="karaoke_search" value="true"{% if karaoke_search %} checked{% endif %}>
+      <span>KTV</span>
     </label>
     <button type="button" class="sp-btn sp-btn--search" id="btn-search-yt">
       <i class="icon icon-search-1"></i>
@@ -307,7 +307,7 @@ $(function () {
   </form>
   <form id="search-form-hidden" action="{{ url_for('songpicker.songpicker') }}" method="get" style="display:none">
     <input id="hidden-search-string" type="text" name="search_string" />
-    <input id="hidden-non-karaoke" type="text" name="non_karaoke" />
+    <input id="hidden-karaoke-search" type="text" name="karaoke_search" />
   </form>
 </div>
 

@@ -407,6 +407,23 @@ const handleNowPlayingUpdate = (np) => {
       } else {
         if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
         hlsInstance = new Hls({ startPosition: 0 });
+
+        // Detect multi-audio tracks for instant switching
+        hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, function() {
+          window.audioTrackMap = {};
+          if (hlsInstance.audioTracks && hlsInstance.audioTracks.length > 1) {
+            hlsInstance.audioTracks.forEach(function(track, i) {
+              var name = (track.name || "track" + i).toLowerCase();
+              window.audioTrackMap[name] = i;
+              console.log("Audio track " + i + ": " + track.name);
+            });
+            // Default to instrumental if available
+            if (window.audioTrackMap["instrumental"] !== undefined) {
+              hlsInstance.audioTrack = window.audioTrackMap["instrumental"];
+            }
+          }
+        });
+
         hlsInstance.loadSource(streamUrl);
         hlsInstance.attachMedia(video);
       }
@@ -729,6 +746,16 @@ const setupSocketEvents = () => {
 
   socket.on("hide_leaderboard", () => {
     $("#leaderboard-screen").fadeOut(400);
+  });
+
+  // Instant audio track switching (multi-audio HLS)
+  socket.on("audio_mode_switch", (mode) => {
+    if (!hlsInstance || !window.audioTrackMap) return;
+    var trackIndex = window.audioTrackMap[mode];
+    if (trackIndex !== undefined) {
+      hlsInstance.audioTrack = trackIndex;
+      console.log("Audio track switched to: " + mode + " (index " + trackIndex + ")");
+    }
   });
 
   socket.on("session_summary", (data) => {
