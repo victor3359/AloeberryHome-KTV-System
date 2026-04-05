@@ -388,7 +388,18 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
     return filtered
 
 
-def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = 0.0) -> str:
+def _to_traditional_chinese(text: str) -> str:
+    """Convert simplified Chinese to traditional Chinese."""
+    try:
+        from opencc import OpenCC
+
+        cc = OpenCC("s2t")
+        return cc.convert(text)
+    except ImportError:
+        return text
+
+
+def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = -0.3) -> str:
     """Generate ASS subtitle content with karaoke timing tags.
 
     Args:
@@ -424,7 +435,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for segment in segments:
         words = segment.get("words", [])
         if not words:
-            text = segment.get("text", "").strip()
+            text = _to_traditional_chinese(segment.get("text", "").strip())
             if not text:
                 continue
             start = segment.get("start", 0.0) + timing_offset
@@ -464,6 +475,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             w_end = word_info.get("end", w_start + 0.1) + timing_offset
             duration_cs = max(int((w_end - w_start) * 100), 10)
             prefix = " " if len(karaoke_parts) > (1 if pad_cs > 0 else 0) else ""
+            word = _to_traditional_chinese(word)
             karaoke_parts.append(f"{{\\kf{duration_cs}}}{prefix}{word}")
 
         if karaoke_parts:
