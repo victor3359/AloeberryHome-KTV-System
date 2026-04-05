@@ -231,7 +231,7 @@ def main() -> None:
     from pikaraoke.lib.current_app import broadcast_event
 
     def _broadcast_in_context(event_name):
-        def handler():
+        def handler(*args, **kwargs):
             with app.app_context():
                 broadcast_event(event_name)
 
