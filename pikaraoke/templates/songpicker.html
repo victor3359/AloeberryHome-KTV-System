@@ -2,6 +2,45 @@
 {% block scripts %}
 <link href="{{ url_for('static', filename='selectize.min.css') }}" rel="stylesheet" />
 <script src="{{ url_for('static', filename='selectize-0.12.6.min.js') }}"></script>
+<style>
+  /* Critical overrides to ensure modern theme applies over Bulma */
+  body { background: #0a0a0f !important; color: #f1f5f9 !important; }
+  .sp-pill--active { background: linear-gradient(135deg, #7c3aed, #06b6d4) !important; color: white !important; border-color: transparent !important; }
+  .sp-pill { background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 8px 16px; font-size: 0.85rem; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; min-height: 36px; }
+  .sp-pill:hover { background: rgba(255,255,255,0.1); color: #f1f5f9; }
+  .sp-btn { width: 44px; height: 44px; border: none; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; cursor: pointer; flex-shrink: 0; }
+  .sp-btn--search { background: linear-gradient(135deg, #7c3aed, #06b6d4) !important; color: white !important; }
+  .sp-btn--queue { background: #10b981 !important; color: white !important; }
+  .sp-song-card { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; min-height: 56px; background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.08) !important; }
+  .sp-song-card:hover { background: rgba(255,255,255,0.1) !important; }
+  .sp-song-card__action { width: 40px; height: 40px; border-radius: 50%; background: rgba(16,185,129,0.15); color: #10b981; display: flex; align-items: center; justify-content: center; border: none; cursor: pointer; font-size: 1.1rem; flex-shrink: 0; text-decoration: none; }
+  .sp-song-card__queued { width: 40px; height: 40px; border-radius: 50%; background: rgba(124,58,237,0.12); color: #7c3aed; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0; }
+  .sp-song-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  @media (min-width: 768px) { .sp-song-grid { grid-template-columns: repeat(3, 1fr); } }
+  .sp-search-bar { position: sticky; top: 0; z-index: 20; padding: 12px 16px; margin: -16px -16px 12px -16px; background: rgba(10,10,15,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .sp-search-form { display: flex; align-items: center; gap: 8px; }
+  .sp-search-input-wrap { flex: 1; min-width: 0; }
+  .sp-search-input-wrap .selectize-input { height: 44px !important; border-radius: 10px !important; background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.08) !important; color: #f1f5f9 !important; font-size: 1rem !important; }
+  .sp-search-input-wrap .selectize-input input { color: #f1f5f9 !important; }
+  .sp-search-input-wrap .selectize-dropdown { background: #1a1a2e !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 10px !important; }
+  .sp-search-input-wrap .selectize-dropdown .option { color: #f1f5f9 !important; }
+  .sp-search-input-wrap .selectize-dropdown .active { background: rgba(255,255,255,0.1) !important; }
+  .sp-pill-bar { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0; scrollbar-width: none; }
+  .sp-pill-bar::-webkit-scrollbar { display: none; }
+  .sp-mini-strip { display: flex; align-items: center; gap: 8px; padding: 8px 14px; margin-bottom: 10px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); cursor: pointer; }
+  .sp-mini-strip__btn { width: 40px; height: 40px; border: none; border-radius: 50%; background: rgba(255,255,255,0.1); color: #f1f5f9; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+  .sp-song-card__title { font-size: 0.88rem; font-weight: 500; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sp-song-card__artist { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
+  .sp-song-card__info { flex: 1; min-width: 0; }
+  .sp-artist__avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #06b6d4); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; color: white; }
+  .sp-section-header { display: flex; align-items: center; gap: 8px; padding: 14px 0 10px; font-size: 0.9rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; }
+  .sp-song-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; min-height: 56px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); }
+  .sp-nonktv-check { display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+  /* Audio mode mini buttons on songs page */
+  .sp-audio-mode { display: flex; gap: 2px; flex-shrink: 0; }
+  .sp-audio-mode__btn { padding: 4px 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: transparent; color: #94a3b8; font-size: 0.7rem; cursor: pointer; }
+  .sp-audio-mode__btn.active { background: linear-gradient(135deg, #7c3aed, #06b6d4); color: white; border-color: transparent; }
+</style>
 
 <script>
 $(function () {
@@ -195,6 +234,14 @@ $(function () {
     $(".sp-mini-strip__title").text(np.now_playing);
     var singer = np.now_playing_user2 ? np.now_playing_user + " & " + np.now_playing_user2 : np.now_playing_user;
     $(".sp-mini-strip__singer").text(singer);
+    // Audio mode buttons
+    if (np.has_stems) {
+      $(".sp-audio-mode").show();
+      $(".sp-audio-mode__btn").removeClass("active");
+      $(".sp-audio-mode__btn[data-mode='" + (np.now_playing_audio_mode || "original") + "']").addClass("active");
+    } else {
+      $(".sp-audio-mode").hide();
+    }
     if (np.is_paused) {
       $("#sp-pause-btn i").removeClass("icon-pause").addClass("icon-play");
     } else {
@@ -203,6 +250,13 @@ $(function () {
   }
   $("#sp-pause-btn").click(function(e) { e.stopPropagation(); $.get('/pause'); });
   $("#sp-skip-btn").click(function(e) { e.stopPropagation(); $.get('/skip'); });
+  $(document).on("click", ".sp-audio-mode__btn", function(e) {
+    e.stopPropagation();
+    var mode = $(this).data("mode");
+    $.get("/audio_mode/" + mode);
+    $(".sp-audio-mode__btn").removeClass("active");
+    $(this).addClass("active");
+  });
   $(".sp-mini-strip").click(function(e) {
     if (!$(e.target).closest('.sp-mini-strip__btn').length) {
       window.location.href = "{{ url_for('queue.queue') }}";
@@ -258,10 +312,15 @@ $(function () {
 </div>
 
 {# ===== MINI CONTROL STRIP (shows when song is playing) ===== #}
-<div class="sp-mini-strip glass is-hidden">
+<div class="sp-mini-strip is-hidden">
   <div class="sp-mini-strip__info">
     <div class="sp-mini-strip__title">--</div>
     <div class="sp-mini-strip__singer">--</div>
+  </div>
+  <div class="sp-audio-mode" style="display:none">
+    <button class="sp-audio-mode__btn" data-mode="original">{% trans %}Original{% endtrans %}</button>
+    <button class="sp-audio-mode__btn active" data-mode="instrumental">{% trans %}Karaoke{% endtrans %}</button>
+    <button class="sp-audio-mode__btn" data-mode="guide">{% trans %}Guide{% endtrans %}</button>
   </div>
   <button id="sp-pause-btn" class="sp-mini-strip__btn"><i class="icon-pause"></i></button>
   <button id="sp-skip-btn" class="sp-mini-strip__btn"><i class="icon-to-end"></i></button>

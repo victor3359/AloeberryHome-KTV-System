@@ -23,12 +23,13 @@
     $(".mini-player__title").text(np.now_playing);
     $(".mini-player__singer").text(singerDisplay);
 
-    // Audio mode indicator
-    if (np.has_stems && np.now_playing_audio_mode !== "original") {
-      var modeLabel = np.now_playing_audio_mode === "guide" ? "Guide" : "Karaoke";
-      $(".mini-player__mode").text(modeLabel).show();
+    // Audio mode buttons on mini player
+    if (np.has_stems) {
+      $(".mini-player__audio-mode").show();
+      $(".audio-mode-btn-mini").removeClass("active");
+      $(".audio-mode-btn-mini[data-mode='" + (np.now_playing_audio_mode || "original") + "']").addClass("active");
     } else {
-      $(".mini-player__mode").hide();
+      $(".mini-player__audio-mode").hide();
     }
 
     if (np.is_paused) {
@@ -309,13 +310,21 @@
     $("#mini-pause-btn").click(function(e) { e.stopPropagation(); $.get('/pause'); });
     $("#mini-skip-btn").click(function(e) { e.stopPropagation(); $.get('/skip'); });
 
-    // Audio mode toggle
+    // Audio mode toggle (control panel)
     $(document).on("click", ".audio-mode-btn", function() {
       var mode = $(this).data("mode");
       $.get("/audio_mode/" + mode);
       $(".audio-mode-btn").removeClass("active");
       $(this).addClass("active");
       toggleControlPanel();
+    });
+    // Audio mode toggle (mini player bar)
+    $(document).on("click", ".audio-mode-btn-mini", function(e) {
+      e.stopPropagation();
+      var mode = $(this).data("mode");
+      $.get("/audio_mode/" + mode);
+      $(".audio-mode-btn-mini").removeClass("active");
+      $(this).addClass("active");
     });
     $(".mini-player").click(function(e) {
       if ($(e.target).closest('.mini-player__btn').length === 0) toggleControlPanel();
@@ -357,7 +366,12 @@
 <div class="mini-player glass is-hidden">
   <div class="mini-player__info">
     <div class="mini-player__title">--</div>
-    <div class="mini-player__singer">-- <span class="mini-player__mode" style="display:none; color:var(--accent-cyan, #06b6d4); font-size:0.75rem; margin-left:4px"></span></div>
+    <div class="mini-player__singer">--</div>
+  </div>
+  <div class="mini-player__audio-mode" style="display:none">
+    <button class="audio-mode-btn-mini" data-mode="original">{% trans %}Orig{% endtrans %}</button>
+    <button class="audio-mode-btn-mini active" data-mode="instrumental">KTV</button>
+    <button class="audio-mode-btn-mini" data-mode="guide">{% trans %}Guide{% endtrans %}</button>
   </div>
   <div class="mini-player__controls">
     <button id="mini-pause-btn" class="mini-player__btn"><i class="icon-pause"></i></button>

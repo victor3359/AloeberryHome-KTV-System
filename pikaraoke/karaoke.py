@@ -613,12 +613,17 @@ class Karaoke:
                     )
                     if song_title:
                         self.play_stats.increment(song_title)
+                    # Auto-default to instrumental if stems exist (KTV standard)
+                    audio_mode = song.get("audio_mode", "original")
+                    if audio_mode == "original" and self.vocal_separator.has_stems(song["file"]):
+                        audio_mode = "instrumental"
+
                     result = self.playback_controller.play_file(
                         song["file"],
                         song["user"],
                         song["semitones"],
                         song.get("user2"),
-                        song.get("audio_mode", "original"),
+                        audio_mode,
                     )
 
                     if not result.success and result.error:

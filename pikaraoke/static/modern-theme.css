@@ -2579,6 +2579,35 @@ a.dropdown-item.is-active {
     border-color: transparent;
 }
 
+/* Mini player audio mode buttons */
+.mini-player__audio-mode {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.audio-mode-btn-mini {
+    padding: 4px 10px;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary, #94a3b8);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.audio-mode-btn-mini:hover {
+    background: var(--bg-surface-hover, rgba(255, 255, 255, 0.1));
+}
+
+.audio-mode-btn-mini.active {
+    background: linear-gradient(135deg, #7c3aed, #06b6d4);
+    color: white;
+    border-color: transparent;
+}
+
 /* ==========================================================================
    Song Picker Page (sp- prefix)
    ========================================================================== */
