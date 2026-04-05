@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -88,6 +89,157 @@ def _ass_path_for(song_path: str) -> str:
     return base + "_karaoke.ass"
 
 
+def _parse_lrc_line(line: str) -> tuple[float, str] | None:
+    """Parse an LRC timestamp line like '[01:23.45]lyrics text'."""
+    import re
+
+    m = re.match(r"\[(\d+):(\d+)\.(\d+)\](.*)", line.strip())
+    if not m:
+        return None
+    minutes, seconds, centis, text = m.groups()
+    timestamp = int(minutes) * 60 + int(seconds) + int(centis) / 100
+    return timestamp, text.strip()
+
+
+def _clean_search_title(title: str) -> str:
+    """Clean YouTube video title to extract artist + song name for lyrics search."""
+    import re
+
+    # Remove YouTube ID suffix (---xxxxx)
+    title = re.sub(r"---[\w-]{11}(\.\w+)?$", "", title)
+    # Remove file extension
+    title = re.sub(r"\.\w{3,4}$", "", title)
+    # Remove common noise words
+    noise = [
+        r"\(?official\s*(music\s*)?video\)?",
+        r"\(?official\s*MV\)?",
+        r"\(?MV\)?",
+        r"\(?HQ\)?",
+        r"官方版",
+        r"官方MV",
+        r"完整版",
+        r"lyrics?\s*video",
+        r"with\s*lyrics",
+        r"full\s*version",
+        r"\(?HD\)?",
+        r"\(?4K\)?",
+        r"\(?1080p\)?",
+    ]
+    for pat in noise:
+        title = re.sub(pat, "", title, flags=re.IGNORECASE)
+    # Remove brackets with content like 〈...〉【...】(...)
+    title = re.sub(r"[〈〉【】\[\]]", " ", title)
+    # Clean up whitespace
+    title = re.sub(r"\s+", " ", title).strip()
+    # Remove trailing punctuation
+    title = title.rstrip(" -_")
+    return title
+
+
+def _search_online_lyrics(title: str) -> list[dict] | None:
+    """Search for synced lyrics (LRC) online. Returns parsed segments or None."""
+    try:
+        import syncedlyrics
+
+        clean_title = _clean_search_title(title)
+        logging.info("Searching online lyrics for: '%s'", clean_title)
+        lrc = syncedlyrics.search(clean_title, synced_only=True)
+        if not lrc:
+            return None
+
+        segments = []
+        lines = [_parse_lrc_line(ln) for ln in lrc.splitlines() if ln.strip()]
+        parsed = [p for p in lines if p and p[1]]
+
+        # Validation: reject if too few lines (likely wrong match)
+        if len(parsed) < 5:
+            logging.warning("Online lyrics too short (%d lines), skipping", len(parsed))
+            return None
+
+        for i, (start, text) in enumerate(parsed):
+            end = parsed[i + 1][0] if i + 1 < len(parsed) else start + 5.0
+            segments.append({"start": start, "end": end, "text": text, "words": []})
+
+        logging.info("Found online synced lyrics: %d lines for '%s'", len(segments), clean_title)
+        return segments if segments else None
+    except Exception as e:
+        logging.warning("Online lyrics search failed: %s", e)
+        return None
+
+
+def _merge_online_text_with_whisper_timing(
+    whisper_segments: list[dict], online_segments: list[dict]
+) -> list[dict]:
+    """Replace Whisper text with online lyrics while keeping Whisper's word timing.
+
+    For each Whisper segment, find the best matching online lyric line by
+    timestamp proximity, then replace the segment text. Word-level timing
+    from Whisper is preserved for smooth karaoke animation.
+    """
+    if not online_segments:
+        return whisper_segments
+
+    # Build a list of online lyrics with timestamps for matching
+    online_lines = [(seg["start"], seg["text"]) for seg in online_segments if seg["text"]]
+
+    result = []
+    for wseg in whisper_segments:
+        w_start = wseg.get("start", 0)
+        w_text = wseg.get("text", "").strip()
+        words = wseg.get("words", [])
+
+        # Find closest online lyric line by start time (within 5 second window)
+        best_match = None
+        best_dist = 5.0
+        for o_start, o_text in online_lines:
+            dist = abs(w_start - o_start)
+            if dist < best_dist:
+                best_dist = dist
+                best_match = o_text
+
+        if best_match and words:
+            # Replace the segment text but keep word-level timing
+            # Distribute online text characters across Whisper word timings
+            online_chars = list(best_match.replace(" ", ""))
+            whisper_words = [w for w in words if w.get("word", "").strip()]
+
+            if whisper_words and online_chars:
+                # Distribute characters proportionally across word slots
+                chars_per_word = max(1, len(online_chars) // len(whisper_words))
+                new_words = []
+                char_idx = 0
+                for i, w in enumerate(whisper_words):
+                    if i == len(whisper_words) - 1:
+                        # Last word gets all remaining characters
+                        chunk = "".join(online_chars[char_idx:])
+                    else:
+                        chunk = "".join(online_chars[char_idx : char_idx + chars_per_word])
+                        char_idx += chars_per_word
+                    if chunk:
+                        new_words.append(
+                            {
+                                "word": chunk,
+                                "start": w["start"],
+                                "end": w["end"],
+                            }
+                        )
+
+                result.append(
+                    {
+                        "start": wseg["start"],
+                        "end": wseg["end"],
+                        "text": best_match,
+                        "words": new_words,
+                    }
+                )
+                continue
+
+        # No match or no words — keep original Whisper segment
+        result.append(wseg)
+
+    return result
+
+
 def _format_ass_time(seconds: float) -> str:
     """Format seconds as ASS timestamp H:MM:SS.cc."""
     h = int(seconds // 3600)
@@ -97,13 +249,198 @@ def _format_ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def generate_karaoke_ass(segments: list[dict], title: str = "") -> str:
+def _correct_typos_with_online_lyrics(
+    whisper_segments: list[dict], online_segments: list[dict]
+) -> list[dict]:
+    """Correct Whisper homophone errors using online lyrics as reference.
+
+    Only replaces individual characters when the overall line similarity
+    is high (>60%), keeping Whisper's text structure and word timing intact.
+    Does NOT replace entire lines — only fixes likely typos.
+    """
+    from difflib import SequenceMatcher
+
+    online_lines = [(seg["start"], seg["text"]) for seg in online_segments if seg["text"]]
+    if not online_lines:
+        return whisper_segments
+
+    corrected_count = 0
+    result = []
+    for wseg in whisper_segments:
+        w_text = wseg.get("text", "").strip()
+        w_start = wseg.get("start", 0)
+        words = wseg.get("words", [])
+
+        # Find closest online line by timestamp (within 3 second window)
+        best_match = None
+        best_dist = 3.0
+        for o_start, o_text in online_lines:
+            dist = abs(w_start - o_start)
+            if dist < best_dist:
+                best_dist = dist
+                best_match = o_text
+
+        if not best_match or not words:
+            result.append(wseg)
+            continue
+
+        # Check similarity — only correct if >60% similar (same line, minor typos)
+        w_chars = w_text.replace(" ", "")
+        o_chars = best_match.replace(" ", "")
+        ratio = SequenceMatcher(None, w_chars, o_chars).ratio()
+
+        if ratio < 0.6:
+            # Too different — probably wrong match, keep Whisper as-is
+            result.append(wseg)
+            continue
+
+        if ratio > 0.99:
+            # Already identical, no correction needed
+            result.append(wseg)
+            continue
+
+        # Character-level correction: replace individual wrong chars in each word
+        o_idx = 0
+        new_words = []
+        for w in words:
+            word_text = w.get("word", "").strip()
+            if not word_text:
+                new_words.append(w)
+                continue
+
+            corrected_word = ""
+            for ch in word_text:
+                if o_idx < len(o_chars) and ch != o_chars[o_idx]:
+                    # Replace with online character (likely correct)
+                    corrected_word += o_chars[o_idx]
+                    corrected_count += 1
+                elif o_idx < len(o_chars):
+                    corrected_word += ch
+                else:
+                    corrected_word += ch
+                o_idx += 1
+
+            new_words.append(
+                {
+                    "word": corrected_word,
+                    "start": w["start"],
+                    "end": w["end"],
+                }
+            )
+
+        result.append(
+            {
+                "start": wseg["start"],
+                "end": wseg["end"],
+                "text": best_match,
+                "words": new_words,
+            }
+        )
+
+    if corrected_count > 0:
+        logging.info("Corrected %d characters with online lyrics", corrected_count)
+    return result
+
+
+_HALLUCINATION_KEYWORDS = [
+    "作詞",
+    "作曲",
+    "編曲",
+    "填詞",
+    "監製",
+    "製作人",
+    "lyrics by",
+    "composed by",
+    "music by",
+    "arranged by",
+    "written by",
+    "produced by",
+    "directed by",
+    "字幕",
+    "歌詞提供",
+    "music video",
+    "official mv",
+    "subscribe",
+    "訂閱",
+    "點讚",
+    "like and subscribe",
+    "copyright",
+    "版權",
+    "all rights reserved",
+]
+
+
+def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
+    """Filter out Whisper hallucinated segments (fake text during silence).
+
+    Common hallucinations: repeated text, composer/lyricist credits,
+    nonsensical repetitions during instrumental intros/outros.
+    """
+    import re
+
+    filtered = []
+    seen_texts: dict[str, int] = {}
+    prev_normalized = ""
+
+    for seg in segments:
+        text = seg.get("text", "").strip()
+        if not text:
+            continue
+
+        # Skip very short segments (likely noise)
+        duration = seg.get("end", 0) - seg.get("start", 0)
+        if duration < 0.1:
+            continue
+
+        # Skip segments with high no_speech_prob (silence detected)
+        if seg.get("no_speech_prob", 0) > 0.5:
+            continue
+
+        # Skip suspiciously long segments (normal lyric line is 2-10s)
+        if duration > 20:
+            continue
+
+        # Keyword-based hallucination detection (case-insensitive substring match)
+        text_lower = text.lower()
+        if any(kw in text_lower for kw in _HALLUCINATION_KEYWORDS):
+            continue
+
+        # Track repeated text — hallucination repeats same phrase
+        normalized = re.sub(r"\s+", "", text)
+        seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
+        if seen_texts[normalized] > 3:
+            continue
+
+        # Skip consecutive identical lines (adjacent duplicates)
+        if normalized == prev_normalized:
+            continue
+        prev_normalized = normalized
+
+        filtered.append(seg)
+
+    return filtered
+
+
+def _to_traditional_chinese(text: str) -> str:
+    """Convert simplified Chinese to traditional Chinese."""
+    try:
+        from opencc import OpenCC
+
+        cc = OpenCC("s2t")
+        return cc.convert(text)
+    except ImportError:
+        return text
+
+
+def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = -0.3) -> str:
     """Generate ASS subtitle content with karaoke timing tags.
 
     Args:
         segments: List of Whisper segments, each with 'words' containing
                   {'word': str, 'start': float, 'end': float}.
         title: Song title for the script info.
+        timing_offset: Seconds to delay subtitle fill animation (positive = later).
+                       Compensates for Whisper detecting word onsets slightly early.
 
     Returns:
         Complete ASS file content as a string.
@@ -111,54 +448,71 @@ def generate_karaoke_ass(segments: list[dict], title: str = "") -> str:
     header = f"""[Script Info]
 Title: {title}
 ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: 3840
+PlayResY: 2160
 WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,Arial,58,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,40,40,60,1
+Style: Karaoke,Arial,168,&H0000D7FF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,8,5,2,80,80,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = [header.strip()]
 
+    # Pre-display: show lyrics 1.5s before singing starts
+    # Timing offset: delay fill animation to match actual vocal onset
+    pre_display = 1.5
+
     for segment in segments:
         words = segment.get("words", [])
         if not words:
-            # Fallback: treat entire segment text as one block
-            text = segment.get("text", "").strip()
+            text = _to_traditional_chinese(segment.get("text", "").strip())
             if not text:
                 continue
-            start = segment.get("start", 0.0)
-            end = segment.get("end", start + 1.0)
+            start = segment.get("start", 0.0) + timing_offset
+            end = segment.get("end", start + 1.0) + timing_offset
             duration_cs = max(int((end - start) * 100), 10)
-            ass_start = _format_ass_time(start)
-            ass_end = _format_ass_time(end)
-            lines.append(
-                f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{{\\kf{duration_cs}}}{text}"
-            )
+            early_start = max(0, start - pre_display)
+            pad_cs = int((start - early_start) * 100)
+            ass_start = _format_ass_time(early_start)
+            ass_end = _format_ass_time(end + 0.5)
+            if pad_cs > 0:
+                lines.append(
+                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,"
+                    f"{{\\kf{pad_cs}}}{{\\kf{duration_cs}}}{text}"
+                )
+            else:
+                lines.append(
+                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{{\\kf{duration_cs}}}{text}"
+                )
             continue
 
-        # Build karaoke line from word-level timestamps
-        seg_start = words[0]["start"]
-        seg_end = words[-1]["end"]
-        ass_start = _format_ass_time(seg_start)
-        ass_end = _format_ass_time(seg_end + 0.5)  # Small buffer
+        # Build karaoke line from word-level timestamps (with offset)
+        seg_start = words[0]["start"] + timing_offset
+        seg_end = words[-1]["end"] + timing_offset
+        early_start = max(0, seg_start - pre_display)
+        pad_cs = int((seg_start - early_start) * 100)
+        ass_start = _format_ass_time(early_start)
+        ass_end = _format_ass_time(seg_end + 0.5)
 
         karaoke_parts = []
+        if pad_cs > 0:
+            karaoke_parts.append(f"{{\\kf{pad_cs}}}")
         for word_info in words:
             word = word_info.get("word", "").strip()
             if not word:
                 continue
-            w_start = word_info.get("start", 0.0)
-            w_end = word_info.get("end", w_start + 0.1)
-            duration_cs = max(int((w_end - w_start) * 100), 5)
-            karaoke_parts.append(f"{{\\kf{duration_cs}}}{word}")
+            w_start = word_info.get("start", 0.0) + timing_offset
+            w_end = word_info.get("end", w_start + 0.1) + timing_offset
+            duration_cs = max(int((w_end - w_start) * 100), 10)
+            prefix = " " if len(karaoke_parts) > (1 if pad_cs > 0 else 0) else ""
+            word = _to_traditional_chinese(word)
+            karaoke_parts.append(f"{{\\kf{duration_cs}}}{prefix}{word}")
 
         if karaoke_parts:
-            text = " ".join(karaoke_parts)
+            text = "".join(karaoke_parts)
             lines.append(f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{text}")
 
     return "\n".join(lines) + "\n"
@@ -224,14 +578,26 @@ class VocalSeparator:
             self._events.emit("separation_started", {"song_path": song_path})
             logging.info("Starting vocal separation: %s", song_path)
 
+            # Use GPU if available (subprocess isolates from Flask/browser)
+            device = self._device
+            try:
+                import torch
+
+                if device == "cuda" and not torch.cuda.is_available():
+                    device = "cpu"
+            except ImportError:
+                device = "cpu"
+
             cmd = [
-                "python",
+                sys.executable,
                 "-m",
                 "demucs",
                 "--two-stems",
                 "vocals",
                 "-d",
-                self._device,
+                device,
+                "--segment",
+                "7",  # Process 7s chunks (htdemucs max is 7.8s)
                 "--mp3",
                 "--mp3-bitrate",
                 "192",
@@ -240,26 +606,41 @@ class VocalSeparator:
                 song_path,
             ]
 
+            # First run downloads model (~80MB), allow extra time
+            logging.info("Running demucs (device=%s)...", device)
+            env = {
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+                "OMP_NUM_THREADS": "10",
+                "MKL_NUM_THREADS": "10",
+            }
+            # Lower priority on Windows so playback isn't starved
+            creationflags = 0x00004000 if sys.platform == "win32" else 0
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=900,
+                env=env,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=creationflags,
             )
 
             if result.returncode != 0:
-                error = result.stderr[:500] if result.stderr else "Unknown error"
-                logging.error("Demucs failed: %s", error)
-
-                # Retry with CPU if CUDA failed
-                if self._device == "cuda" and "CUDA" in error:
-                    logging.warning("CUDA failed, retrying with CPU...")
-                    cmd[cmd.index("cuda")] = "cpu"
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
-                    if result.returncode != 0:
-                        return SeparationResult(success=False, error="Demucs failed on CPU too")
-                else:
-                    return SeparationResult(success=False, error=error)
+                # Filter progress bars from stderr to find real errors
+                stderr_lines = (result.stderr or "").splitlines()
+                error_lines = [
+                    ln
+                    for ln in stderr_lines
+                    if ln.strip()
+                    and "B/s]" not in ln
+                    and "it/s]" not in ln
+                    and not ln.strip().startswith(("%", "|"))
+                ]
+                error = "\n".join(error_lines[-10:]) if error_lines else result.stderr[:500]
+                logging.error("Demucs failed (exit %d): %s", result.returncode, error)
+                return SeparationResult(success=False, error=error)
 
             # Demucs outputs to <output_dir>/htdemucs/<stem_name>/
             song_stem = Path(song_path).stem
@@ -300,8 +681,27 @@ class VocalSeparator:
         except OSError as e:
             return SeparationResult(success=False, error=str(e))
 
+    @staticmethod
+    def _detect_language_from_filename(song_path: str) -> str | None:
+        """Detect language from filename Unicode characters."""
+        import re
+
+        name = os.path.basename(song_path)
+        if re.search(r"[\u3040-\u30ff]", name):
+            return "ja"
+        if re.search(r"[\uac00-\ud7af]", name):
+            return "ko"
+        if re.search(r"[\u4e00-\u9fff]", name):
+            return "zh"
+        # Vietnamese: Latin with unique diacritics (ơ ư ă đ ờ ị ứ ề ộ ả etc.)
+        if re.search(r"[\u01a0\u01a1\u01af\u01b0\u0102\u0103\u0110\u0111]", name):
+            return "vi"
+        if re.search(r"[\u1ea0-\u1ef9]", name):
+            return "vi"
+        return None
+
     def transcribe(self, song_path: str) -> TranscriptionResult:
-        """Run Whisper transcription on the vocals stem for word-level timestamps."""
+        """Run Whisper transcription as a subprocess to avoid GIL contention with Flask."""
         if not WHISPER_AVAILABLE:
             return TranscriptionResult(success=False, error="Whisper is not installed")
 
@@ -310,26 +710,75 @@ class VocalSeparator:
 
         try:
             logging.info("Starting transcription: %s", audio_source)
-            import whisper
+            detected_lang = self._detect_language_from_filename(song_path)
 
-            model = whisper.load_model(self._whisper_model, device=self._device)
-            result = model.transcribe(
-                audio_source,
-                word_timestamps=True,
-                verbose=False,
+            # Run Whisper in a subprocess to avoid GIL contention with Flask/gevent.
+            # In-process Whisper with 10 PyTorch threads starved the main thread.
+            import json as _json
+            import tempfile
+
+            output_file = tempfile.mktemp(suffix=".json")
+            # Build Whisper subprocess script as a proper Python file
+            lang_arg = f", language='{detected_lang}'" if detected_lang else ""
+            transcribe_call = (
+                f"r = model.transcribe(sys.argv[1], word_timestamps=True, "
+                f"verbose=False, condition_on_previous_text=False{lang_arg})"
+            )
+            script = (
+                "import sys, json, warnings, os\n"
+                "warnings.filterwarnings('ignore')\n"
+                "os.environ['OMP_NUM_THREADS'] = '10'\n"
+                "import torch; torch.set_num_threads(10)\n"
+                "import whisper\n"
+                "# Whisper forced to CPU: GPU shared with browser causes splash crash\n"
+                f"model = whisper.load_model('{self._whisper_model}', device='cpu')\n"
+                f"{transcribe_call}\n"
+                "segs = [dict(start=s['start'],end=s['end'],text=s['text'],words=s.get('words',[]),no_speech_prob=s.get('no_speech_prob',0)) for s in r.get('segments',[])]\n"
+                "json.dump(dict(segments=segs,language=r.get('language','')),open(sys.argv[2],'w',encoding='utf-8'),ensure_ascii=False)\n"
             )
 
+            if detected_lang:
+                logging.info("Language hint from filename: %s", detected_lang)
+
+            env = {
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+                "OMP_NUM_THREADS": "10",
+                "MKL_NUM_THREADS": "10",
+            }
+            creationflags = 0x00004000 if sys.platform == "win32" else 0
+            proc = subprocess.run(
+                [sys.executable, "-c", script, audio_source, output_file],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                env=env,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=creationflags,
+            )
+
+            if proc.returncode != 0 or not os.path.exists(output_file):
+                error = proc.stderr[:500] if proc.stderr else "Whisper subprocess failed"
+                logging.error("Whisper failed: %s", error)
+                return TranscriptionResult(success=False, error=error)
+
+            with open(output_file, encoding="utf-8") as f:
+                data = _json.load(f)
+            os.remove(output_file)
+
             segments = []
-            for seg in result.get("segments", []):
+            for seg in data.get("segments", []):
                 segment_data = {
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
                     "words": seg.get("words", []),
+                    "no_speech_prob": seg.get("no_speech_prob", 0),
                 }
                 segments.append(segment_data)
 
-            language = result.get("language", "")
+            language = data.get("language", "")
             logging.info(
                 "Transcription complete: %d segments, language=%s", len(segments), language
             )
@@ -350,31 +799,46 @@ class VocalSeparator:
             ass_path = None
             language = ""
 
-            # Step 1: Vocal separation (Demucs)
+            # Step 1: Vocal separation (Demucs) — 0-50%
             if DEMUCS_AVAILABLE:
+                self._events.emit("processing_progress", {"stage": "分離人聲", "percent": 0})
                 sep_result = self.separate(song_path)
                 if sep_result.success:
                     stem_paths = sep_result.stem_paths
+                    self._events.emit("processing_progress", {"stage": "分離完成", "percent": 50})
                 else:
                     logging.warning("Separation failed for %s: %s", song_path, sep_result.error)
+                    self._events.emit(
+                        "processing_progress", {"stage": "分離失敗，改用原始音訊", "percent": 50}
+                    )
 
-            # Step 2: Transcription (Whisper)
+            # Step 2: Whisper transcription — 50-90%
             if WHISPER_AVAILABLE:
+                self._events.emit("processing_progress", {"stage": "AI 生成歌詞中", "percent": 55})
                 trans_result = self.transcribe(song_path)
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
+                    self._events.emit("processing_progress", {"stage": "歌詞校對中", "percent": 85})
+                    segments = _filter_whisper_hallucinations(trans_result.segments)
 
-                    # Step 3: Generate karaoke ASS
-                    ass_content = generate_karaoke_ass(trans_result.segments, title)
+                    # Try online lyrics for typo correction (character-level only)
+                    search_title = title or os.path.basename(song_path)
+                    online_segments = _search_online_lyrics(search_title)
+                    if online_segments:
+                        segments = _correct_typos_with_online_lyrics(segments, online_segments)
+
+                    self._events.emit("processing_progress", {"stage": "產生字幕", "percent": 95})
+                    ass_content = generate_karaoke_ass(segments, title)
                     ass_path = _ass_path_for(song_path)
                     with open(ass_path, "w", encoding="utf-8") as f:
                         f.write(ass_content)
                     logging.info("Karaoke ASS generated: %s", ass_path)
+                    self._events.emit("processing_progress", {"stage": "處理完成", "percent": 100})
                 else:
                     logging.warning(
                         "Transcription failed for %s: %s",
                         song_path,
-                        trans_result.error,
+                        getattr(trans_result, "error", "unknown"),
                     )
 
             success = stem_paths is not None or ass_path is not None

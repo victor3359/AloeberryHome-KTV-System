@@ -6,6 +6,7 @@ import logging
 import os
 import socket
 import subprocess
+import threading
 import time
 from typing import Any
 
@@ -160,10 +161,20 @@ class Karaoke:
             socketio: SocketIO instance for real-time event emission.
             preferred_language: Language code for UI (e.g., 'en', 'de_DE').
         """
+        from logging.handlers import RotatingFileHandler
+
+        log_file = os.path.join(get_data_directory(), "pikaraoke.log")
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
         logging.basicConfig(
             format="[%(asctime)s] %(levelname)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
             level=int(log_level),
+            handlers=[
+                logging.StreamHandler(),
+                file_handler,
+            ],
         )
 
         # Initialize event system and preferences (foundation for all components)
@@ -234,13 +245,11 @@ class Karaoke:
         self.events.on("song_ended", self.update_now_playing_socket)
         self.events.on("skip_requested", lambda: self.playback_controller.skip(False))
 
-        # Session score history: list of {singer, score, song}
+        # Session state (protected by _session_lock for thread safety)
+        self._session_lock = threading.RLock()
         self.score_history: list[dict] = []
-        # Singers who have queued a song this session
         self.known_singers: set[str] = set()
-        # Session start time (unix timestamp) for elapsed display
         self.session_start: float = time.time()
-        # Play history this session: list of {title, user, user2}
         self.play_history: list[dict] = []
 
         # Persistent cross-session data
@@ -284,32 +293,41 @@ class Karaoke:
         self.preferences.apply_all(**cli_overrides)
 
     def change_audio_mode(self, audio_mode: str) -> None:
-        """Restart the current song with a different audio mode (original/instrumental/guide)."""
-        filename = self.playback_controller.now_playing_filename
-        user = self.playback_controller.now_playing_user
-        semitones = self.playback_controller.now_playing_transpose
+        """Restart the current song with a different audio mode (original/instrumental)."""
+        with self.playback_controller._lock:
+            filename = self.playback_controller.now_playing_filename
+            user = self.playback_controller.now_playing_user
+            semitones = self.playback_controller.now_playing_transpose
+            position = self.playback_controller.now_playing_position or 0
 
         if filename is None or user is None:
             logging.warning("Cannot change audio mode: no song currently playing")
             return
 
-        mode_labels = {"original": "Original", "instrumental": "Karaoke", "guide": "Guide Vocal"}
+        mode_labels = {"original": "原唱", "instrumental": "伴奏"}
         label = mode_labels.get(audio_mode, audio_mode)
-        self.log_and_send(_("Audio: %s") % label)
-        self.queue_manager.enqueue(filename, user, semitones, True, audio_mode=audio_mode)
+        self.log_and_send(_("切換為：%s") % label)
+        self.queue_manager.enqueue(
+            filename, user, semitones, True, audio_mode=audio_mode, start_position=position
+        )
         self.playback_controller.skip(log_action=False)
 
     def reset_session(self) -> None:
         """Reset all session state for a new KTV session."""
-        self.queue_manager.queue_clear()
-        self.score_history.clear()
-        self.play_history.clear()
-        self.known_singers.clear()
-        self.session_start = time.time()
-        logging.info("Session reset")
+        with self._session_lock:
+            self.queue_manager.queue_clear()
+            self.score_history.clear()
+            self.play_history.clear()
+            self.known_singers.clear()
+            self.session_start = time.time()
+            logging.info("Session reset")
 
     def get_session_summary(self) -> dict:
         """Compute summary statistics for the current session."""
+        with self._session_lock:
+            return self._get_session_summary_locked()
+
+    def _get_session_summary_locked(self) -> dict:
         elapsed = int(time.time() - self.session_start)
         total_songs = len(self.play_history)
         singers = list(self.known_singers)
@@ -463,10 +481,12 @@ class Karaoke:
         if filename is None or user is None:
             logging.warning("Cannot transpose: no song currently playing")
             return
-        # MSG: Message shown after the song is transposed, first is the semitones and then the song name
-        self.log_and_send(_("Transposing by %s semitones: %s") % (semitones, now_playing))
-        # Insert the same song at the top of the queue with transposition
-        self.queue_manager.enqueue(filename, user, semitones, True)
+        position = self.playback_controller.now_playing_position or 0
+        audio_mode = self.playback_controller.now_playing_audio_mode
+        self.log_and_send(_("調整音調 %s 個半音：%s") % (semitones, now_playing))
+        self.queue_manager.enqueue(
+            filename, user, semitones, True, audio_mode=audio_mode, start_position=position
+        )
         self.playback_controller.skip(log_action=False)
 
     def volume_change(self, vol_level: float) -> bool:
@@ -604,21 +624,28 @@ class Karaoke:
                     if not song:
                         continue
                     song_title = song.get("title", "")
-                    self.play_history.append(
-                        {
-                            "title": song_title,
-                            "user": song.get("user", ""),
-                            "user2": song.get("user2"),
-                        }
-                    )
+                    with self._session_lock:
+                        self.play_history.append(
+                            {
+                                "title": song_title,
+                                "user": song.get("user", ""),
+                                "user2": song.get("user2"),
+                            }
+                        )
                     if song_title:
                         self.play_stats.increment(song_title)
+                    # Auto-default to instrumental if stems exist (KTV standard)
+                    audio_mode = song.get("audio_mode", "original")
+                    if audio_mode == "original" and self.vocal_separator.has_stems(song["file"]):
+                        audio_mode = "instrumental"
+
                     result = self.playback_controller.play_file(
                         song["file"],
                         song["user"],
                         song["semitones"],
                         song.get("user2"),
-                        song.get("audio_mode", "original"),
+                        audio_mode,
+                        song.get("start_position", 0),
                     )
 
                     if not result.success and result.error:

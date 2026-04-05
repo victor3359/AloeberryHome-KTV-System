@@ -27,16 +27,14 @@ def songpicker():
     site_name = get_site_name()
 
     # --- YouTube search handling ---
+    # Default: search official MV (no suffix). With karaoke_search: add "karaoke".
     search_string = request.args.get("search_string")
     search_results = None
-    non_karaoke = False
+    karaoke_search = request.args.get("karaoke_search") == "true"
 
     if search_string:
-        non_karaoke = request.args.get("non_karaoke") == "true"
-        if non_karaoke:
-            search_results = get_search_results(search_string)
-        else:
-            search_results = get_search_results(search_string + " karaoke")
+        query = search_string + " karaoke" if karaoke_search else search_string
+        search_results = get_search_results(query)
 
     # --- Browse filtering ---
     all_songs = k.song_manager.songs
@@ -108,7 +106,7 @@ def songpicker():
         search=search_flag,
         record_name="songs",
         per_page=results_per_page,
-        display_msg="Showing <b>{start} - {end}</b> of <b>{total}</b> {record_name}",
+        display_msg="共 <b>{total}</b> 首歌曲",
         href=pagination_href,
     )
 
@@ -153,7 +151,7 @@ def songpicker():
         pagination=pagination,
         search_string=search_string,
         search_results=search_results,
-        non_karaoke=non_karaoke,
+        karaoke_search=karaoke_search,
         play_counts=play_counts,
         user_favorites=user_favorites,
         filter_mode=filter_mode,

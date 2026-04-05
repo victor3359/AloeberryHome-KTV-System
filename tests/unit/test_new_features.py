@@ -316,8 +316,8 @@ class TestInfoTabs:
         resp = full_client.get("/info")
         html = resp.data.decode()
         assert resp.status_code == 200
-        # Non-admin should see the Admin accordion card with login option
-        assert "Admin" in html
+        # Non-admin should see the admin accordion card with login option
+        assert "icon-wrench" in html
 
     @patch("pikaraoke.routes.info.get_admin_password", return_value="pass")
     @patch("pikaraoke.routes.info.get_platform", return_value="linux")

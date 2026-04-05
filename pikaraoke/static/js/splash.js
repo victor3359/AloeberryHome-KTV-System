@@ -141,9 +141,11 @@ const endSong = async (reason = null, showScore = false) => {
   if (nowPlaying.up_next) {
     $("#transition-singer-name").text(nowPlaying.next_user || "");
     $("#transition-song-name").text(nowPlaying.up_next);
-    $("#transition-screen").css("transform", "scale(0.9)").fadeIn(600).animate({opacity: 1}, {
-      step: function() { $(this).css("transform", "scale(1)"); }, duration: 400
-    });
+    var ts = document.getElementById("transition-screen");
+    ts.style.display = "flex";
+    ts.classList.remove("transition-enter-active");
+    void ts.offsetWidth;
+    ts.classList.add("transition-enter-active");
     // Countdown timer
     var delay = PikaraokeConfig.splashDelay || 2;
     var remaining = delay;
@@ -349,18 +351,27 @@ const handleNowPlayingUpdate = (np) => {
 
   const video = getVideoPlayer();
 
-  // Setup ASS subtitle file if found
+  // Setup ASS subtitle file if found (skip recreation if URL unchanged)
   const subtitleUrl = np.now_playing_subtitle_url;
-  if (octopusInstance) {
-    octopusInstance.dispose();
-    octopusInstance = null;
+  if (subtitleUrl === window._currentSubtitleUrl && octopusInstance) {
+    // Same subtitle file — don't destroy/recreate (prevents stutter on audio switch)
+  } else {
+    if (octopusInstance) {
+      octopusInstance.dispose();
+      octopusInstance = null;
+    }
+    window._currentSubtitleUrl = subtitleUrl;
   }
-  if (subtitleUrl && video) {
+  if (subtitleUrl && video && !octopusInstance) {
     const options = {
       video: video,
       subUrl: subtitleUrl,
       fonts: ["/static/fonts/Arial.ttf", "/static/fonts/DroidSansFallback.ttf"],
-      debug: true,
+      renderMode: "wasm-blend",
+      targetFps: 60,
+      prescaleFactor: 1.5,
+      prescaleHeightLimit: 2160,
+      debug: false,
       workerUrl: "/static/js/subtitles-octopus-worker.js"
     };
     try {
@@ -380,14 +391,16 @@ const handleNowPlayingUpdate = (np) => {
     $("#progress-bar-container").hide();
     $("#progress-bar-fill").css("width", "0%");
     if (!np.up_next) {
-      $("#transition-screen").fadeOut(400);
+      $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
     }
   }
 
   if (np.now_playing_url && np.now_playing_url !== currentVideoUrl) {
-    $("#transition-screen").fadeOut(400);
-    $("#progress-bar-fill").css("width", "0%");
+    $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
+    $("#progress-bar-fill").css({"width": "0%", "transition": "none"});
     $("#progress-bar-container").show();
+    // Re-enable smooth transition after initial buffering settles
+    setTimeout(function() { $("#progress-bar-fill").css("transition", "width 0.8s linear"); }, 3000);
     currentVideoUrl = np.now_playing_url;
     const streamUrl = np.now_playing_url;
     $("#video-source").attr("src", "");
@@ -401,6 +414,20 @@ const handleNowPlayingUpdate = (np) => {
       } else {
         if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
         hlsInstance = new Hls({ startPosition: 0 });
+
+        // Detect multi-audio tracks for instant switching
+        // FFmpeg names them audio_1/audio_2/audio_3 but order is deterministic:
+        // index 0 = original, 1 = instrumental, 2 = guide
+        hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, function() {
+          window.audioTrackMap = null;
+          if (hlsInstance.audioTracks && hlsInstance.audioTracks.length > 1) {
+            window.audioTrackMap = { "original": 0, "instrumental": 1 };
+            console.log("Multi-audio detected: " + hlsInstance.audioTracks.length + " tracks");
+            // Default to instrumental (karaoke mode)
+            hlsInstance.audioTrack = 1;
+          }
+        });
+
         hlsInstance.loadSource(streamUrl);
         hlsInstance.attachMedia(video);
       }
@@ -523,7 +550,7 @@ const setupVideoPlayer = () => {
   video.addEventListener("timeupdate", (e) => {
     $("#current").text(formatTime(video.currentTime));
     const duration = video.duration || nowPlaying.now_playing_duration;
-    if (duration > 0) {
+    if (duration > 0 && video.currentTime > 2) {
       $("#progress-bar-fill").css("width", (video.currentTime / duration * 100) + "%");
     }
   });
@@ -609,6 +636,13 @@ const PREFERENCE_EFFECTS = {
     screensaverTimeoutSeconds = v;
     PikaraokeConfig.screensaverTimeout = v;
   },
+  volume: (v) => {
+    const video = getVideoPlayer();
+    if (video) video.volume = v;
+  },
+  hide_notifications: (v) => {
+    PikaraokeConfig.hideNotifications = v;
+  },
   splash_theme: (v) => {
     document.body.className = document.body.className.replace(/theme-\S+/g, "");
     if (v && v !== "classic") document.body.classList.add("theme-" + v);
@@ -636,6 +670,13 @@ const setupSocketEvents = () => {
   socket.on('connect', () => {
     console.log('Socket connected');
     socket.emit("register_splash");
+    // Re-fetch now_playing state after reconnection
+    $.get('/now_playing', function(data) {
+      var np = JSON.parse(data);
+      if (np && np.now_playing) {
+        handleNowPlayingUpdate(np);
+      }
+    });
   });
   socket.on('splash_role', (role) => {
     isMaster = (role === "master");
@@ -723,6 +764,44 @@ const setupSocketEvents = () => {
 
   socket.on("hide_leaderboard", () => {
     $("#leaderboard-screen").fadeOut(400);
+  });
+
+  // Client-side pitch shift (instant, no re-encoding)
+  socket.on("pitch_shift", (semitones) => {
+    const video = getVideoPlayer();
+    if (!video) return;
+    // Use playbackRate to shift pitch. preservesPitch=false makes rate change also change pitch.
+    // For pure pitch shift without tempo change, we'd need a WASM rubberband.
+    // This approximation is acceptable for small adjustments (+-3 semitones).
+    if (semitones === 0) {
+      video.playbackRate = 1.0;
+      video.preservesPitch = true;
+    } else {
+      video.preservesPitch = false;
+      video.playbackRate = Math.pow(2, semitones / 12);
+    }
+    console.log("Pitch shift: " + semitones + " semitones, rate=" + video.playbackRate.toFixed(3));
+  });
+
+  // Instant audio track switching (multi-audio HLS)
+  socket.on("audio_mode_switch", (mode) => {
+    if (!hlsInstance || !window.audioTrackMap) return;
+    var trackIndex = window.audioTrackMap[mode];
+    if (trackIndex !== undefined) {
+      hlsInstance.audioTrack = trackIndex;
+      // Force seeked event to re-enable SubtitlesOctopus timeupdate listener.
+      // HLS audio track switch triggers seeking but not always seeked,
+      // which permanently disables subtitle time sync.
+      var video = getVideoPlayer();
+      if (video) {
+        setTimeout(function() {
+          var pos = video.currentTime;
+          video.currentTime = pos + 0.001;
+          video.currentTime = pos;
+        }, 150);
+      }
+      console.log("Audio track switched to: " + mode + " (index " + trackIndex + ")");
+    }
   });
 
   socket.on("session_summary", (data) => {

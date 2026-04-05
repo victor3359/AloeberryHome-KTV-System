@@ -126,9 +126,10 @@ def get_locale() -> str | None:
         # App context not available or karaoke instance not initialized yet
         pass
 
-    # Check URL arguments
-    if request.args.get("lang"):
-        session["lang"] = request.args.get("lang")
+    # Check URL arguments (only accept valid Babel locale codes, not song language filters)
+    url_lang = request.args.get("lang")
+    if url_lang and url_lang in LANGUAGES.keys():
+        session["lang"] = url_lang
         locale = session.get("lang", "en")
     # Use browser header
     else:
@@ -155,6 +156,20 @@ def main() -> None:
     # Optional: Force the log file to go to AppData too, so you can debug installation issues
     # log_path = os.path.join(get_data_directory(), 'pikaraoke.log')
     # logging.basicConfig(filename=log_path, level=logging.INFO)
+
+    # Clean up orphaned FFmpeg processes from previous crashes
+    try:
+        import psutil
+
+        for proc in psutil.process_iter(["name", "pid"]):
+            if proc.info["name"] and "ffmpeg" in proc.info["name"].lower():
+                try:
+                    proc.kill()
+                    logging.info("Killed orphaned FFmpeg process (PID %d)", proc.info["pid"])
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+    except Exception:
+        pass
 
     if not is_ffmpeg_installed():
         logging.error(
@@ -216,14 +231,19 @@ def main() -> None:
     from pikaraoke.lib.current_app import broadcast_event
 
     def _broadcast_in_context(event_name):
-        def handler():
+        def handler(*args, **kwargs):
             with app.app_context():
-                broadcast_event(event_name)
+                # Forward first arg as data payload if present
+                data = args[0] if args else None
+                broadcast_event(event_name, data)
 
         return handler
 
     k.events.on("download_started", _broadcast_in_context("download_started"))
     k.events.on("download_stopped", _broadcast_in_context("download_stopped"))
+    k.events.on("separation_started", _broadcast_in_context("separation_started"))
+    k.events.on("separation_complete", _broadcast_in_context("separation_complete"))
+    k.events.on("processing_progress", _broadcast_in_context("processing_progress"))
 
     # expose shared configuration variables to the flask app
     app.config["ADMIN_PASSWORD"] = args.admin_password

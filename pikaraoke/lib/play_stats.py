@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 
 
@@ -15,6 +16,7 @@ class PlayStats:
     """Track how many times each song has been played across sessions."""
 
     def __init__(self, data_dir: str) -> None:
+        self._lock = threading.RLock()
         self._path = os.path.join(data_dir, "play_stats.json")
         self._counts: dict[str, int] = {}
         self._load()
@@ -38,11 +40,20 @@ class PlayStats:
 
     def increment(self, filename: str) -> None:
         """Increment the play count for a song (by cleaned display name)."""
-        key = filename.strip()
-        if not key:
-            return
-        self._counts[key] = self._counts.get(key, 0) + 1
-        self._save()
+        with self._lock:
+            key = filename.strip()
+            if not key:
+                return
+            self._counts[key] = self._counts.get(key, 0) + 1
+            self._save()
+
+    def remove(self, filename: str) -> None:
+        """Remove play stats for a deleted song."""
+        with self._lock:
+            key = filename.strip()
+            if key in self._counts:
+                del self._counts[key]
+                self._save()
 
     def get_count(self, filename: str) -> int:
         """Get the play count for a song."""
@@ -50,8 +61,10 @@ class PlayStats:
 
     def get_top(self, n: int = 50) -> list[tuple[str, int]]:
         """Get the top N most-played songs as (filename, count) pairs."""
-        return sorted(self._counts.items(), key=lambda x: x[1], reverse=True)[:n]
+        with self._lock:
+            return sorted(self._counts.items(), key=lambda x: x[1], reverse=True)[:n]
 
     def get_all_counts(self) -> dict[str, int]:
         """Get all play counts."""
-        return dict(self._counts)
+        with self._lock:
+            return dict(self._counts)

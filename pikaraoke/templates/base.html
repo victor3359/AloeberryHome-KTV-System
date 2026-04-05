@@ -13,8 +13,8 @@
   <script src="{{  url_for('static', filename='socket.io-4.8.3.min.js') }}"></script>
   <script src="{{  url_for('static', filename='spa-navigation.js') }}"></script>
   <link rel="stylesheet" href="{{  url_for('static', filename='bulma.min.css') }}">
-  <link rel="stylesheet" href="{{  url_for('static', filename='modern-theme.css') }}">
-  <link rel="stylesheet" href="{{  url_for('static', filename='custom.css') }}">
+  <link rel="stylesheet" href="{{  url_for('static', filename='modern-theme.css') }}?v=3">
+  <link rel="stylesheet" href="{{  url_for('static', filename='custom.css') }}?v=3">
   <link rel="icon" type="image/png" href="{{  url_for('static', filename='images/microphone.png') }}">
   <link rel="stylesheet" href="{{  url_for('static', filename='fontello/css/fontello.css') }}?v=2">
 
@@ -37,8 +37,8 @@
     }
 
     function getSemitonesLabel(value) {
-      if (value > 0) return "+" + value + " semitones";
-      return value + " semitones";
+      if (value > 0) return "+" + value;
+      return "" + value;
     }
 
     function isEqual(obj1, obj2) {
@@ -143,16 +143,16 @@
   <!-- Bottom Tab Bar -->
   <nav class="tab-bar glass" role="navigation" aria-label="main navigation">
     <a id="tab-songpicker" class="tab-bar__item" href="{{ url_for('songpicker.songpicker') }}">
-      <i class="icon icon-music-1"></i>
-      <span>{% trans %}Songs{% endtrans %}</span>
+      <i class="icon icon-music"></i>
+      <span>點歌</span>
     </a>
     <a id="tab-queue" class="tab-bar__item" href="{{ url_for('queue.queue') }}">
       <i class="icon icon-list-numbered"></i>
-      <span>{% trans %}Queue{% endtrans %}</span>
+      <span>排隊</span>
     </a>
     <a id="tab-more" class="tab-bar__item" href="{{ url_for('info.info') }}">
-      <i class="icon icon-th-large"></i>
-      <span>{% trans %}More{% endtrans %}</span>
+      <i class="icon icon-menu"></i>
+      <span>更多</span>
     </a>
   </nav>
 

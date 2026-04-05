@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
+import threading
 import uuid
 from queue import Queue
 from threading import Thread
@@ -61,6 +63,7 @@ class DownloadManager:
         self._youtubedl_proxy = youtubedl_proxy
         self._additional_ytdl_args = additional_ytdl_args
         self.download_queue: Queue = Queue()
+        self._state_lock = threading.RLock()
         self.pending_downloads: list[dict] = []  # Shadow queue for visibility
         self.download_errors: list[dict] = []  # Track failed downloads
         self.active_download: dict | None = None
@@ -79,11 +82,12 @@ class DownloadManager:
         Returns:
             Dict containing 'active' download info and list of 'pending' downloads.
         """
-        return {
-            "active": self.active_download,
-            "pending": self.pending_downloads,
-            "errors": self.download_errors,
-        }
+        with self._state_lock:
+            return {
+                "active": self.active_download,
+                "pending": list(self.pending_downloads),
+                "errors": list(self.download_errors),
+            }
 
     def remove_error(self, error_id: str) -> bool:
         """Remove an error from the list by ID.
@@ -94,9 +98,10 @@ class DownloadManager:
         Returns:
             True if removed, False if not found.
         """
-        initial_len = len(self.download_errors)
-        self.download_errors = [e for e in self.download_errors if e["id"] != error_id]
-        return len(self.download_errors) < initial_len
+        with self._state_lock:
+            initial_len = len(self.download_errors)
+            self.download_errors = [e for e in self.download_errors if e["id"] != error_id]
+            return len(self.download_errors) < initial_len
 
     def queue_download(
         self,
@@ -297,14 +302,8 @@ class DownloadManager:
                 self.active_download["progress"] = 100
                 self.active_download["status"] = "complete"
 
-            if enqueue:
-                # MSG: Message shown after the download is completed and queued
-                self._events.emit(
-                    "notification", _("Downloaded and queued: %s") % displayed_title, "success"
-                )
-            else:
-                # MSG: Message shown after the download is completed but not queued
-                self._events.emit("notification", _("Downloaded: %s") % displayed_title, "success")
+            # MSG: Message shown after the download is completed
+            self._events.emit("notification", _("已下載：%s") % displayed_title, "success")
 
             # After download, find the file path by ID
             song_path = None
@@ -322,12 +321,34 @@ class DownloadManager:
                     f"Could not find downloaded song in {self._download_path} matching ID: {video_id}"
                 )
 
-            # Post-download: run vocal separation + transcription in background
+            # Post-download: run vocal separation + transcription BEFORE queueing
             if song_is_valid and song_path and self._vocal_separator:
+                self._events.emit("notification", _("正在處理音訊：%s") % displayed_title, "info")
                 try:
                     self._vocal_separator.process(song_path, title=displayed_title)
                 except Exception as e:
                     logging.warning("Vocal processing failed for %s: %s", song_path, e)
+
+            # Auto-normalize song name: "YouTubeTitle" → "Artist - Song"
+            if song_is_valid and song_path:
+                try:
+                    from pikaraoke.lib.metadata_parser import regex_tidy
+
+                    display_name = self._song_manager.filename_from_path(song_path)
+                    corrected = regex_tidy(display_name)
+                    # Only rename if result has "Artist - Song" format and isn't worse
+                    if (
+                        corrected
+                        and corrected != display_name
+                        and " - " in corrected
+                        and len(corrected) > 3
+                    ):
+                        self._song_manager.rename(song_path, corrected)
+                        ext = os.path.splitext(song_path)[1]
+                        song_path = os.path.join(self._download_path, corrected + ext)
+                        logging.info("Auto-renamed: %s → %s", display_name, corrected)
+                except Exception as e:
+                    logging.warning("Auto-rename failed: %s", e)
 
             if enqueue:
                 if song_is_valid and song_path:

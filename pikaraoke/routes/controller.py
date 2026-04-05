@@ -1,5 +1,7 @@
 """Playback control routes for skip, pause, volume, and transpose."""
 
+import json
+
 import flask_babel
 from flask import redirect, request, url_for
 from flask_smorest import Blueprint
@@ -44,13 +46,21 @@ def transpose(semitones):
 
 @controller_bp.route("/audio_mode/<mode>", methods=["GET"])
 def audio_mode(mode):
-    """Switch audio mode for the current song (original/instrumental/guide)."""
-    if mode not in ("original", "instrumental", "guide"):
+    """Switch audio mode — instant if multi-audio HLS, or re-queue if single."""
+    if mode not in ("original", "instrumental"):
         return "Invalid audio mode", 400
     k = get_karaoke_instance()
-    broadcast_event("skip", "audio mode change")
-    k.change_audio_mode(mode)
-    return redirect(url_for("queue.queue"))
+    if k.playback_controller.supports_multi_audio:
+        # Instant switch via HLS.js audio track — no re-transcoding
+        k.playback_controller.now_playing_audio_mode = mode
+        broadcast_event("audio_mode_switch", mode)
+        # Sync UI state across ALL connected clients
+        k.update_now_playing_socket()
+    else:
+        # Fallback: re-queue with seek position
+        broadcast_event("skip", "audio mode change")
+        k.change_audio_mode(mode)
+    return json.dumps({"ok": True, "mode": mode})
 
 
 @controller_bp.route("/restart")

@@ -123,8 +123,11 @@ class PreferenceManager:
             prefs = self._config_obj[section]
             prefs[preference] = str(val)
 
-            with open(self.config_file_path, "w", encoding="utf-8") as conf:
+            # Atomic write: write to temp file then rename (prevents corruption on crash)
+            tmp_path = self.config_file_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as conf:
                 self._config_obj.write(conf)
+            os.replace(tmp_path, self.config_file_path)
 
             # Auto-sync target object if registered
             if self._target is not None:

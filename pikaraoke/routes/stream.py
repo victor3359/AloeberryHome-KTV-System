@@ -27,7 +27,8 @@ def stream_playlist(id):
     # Validate stream ID matches current song to prevent stale requests from setting is_playing
     if not k.playback_controller.is_playing:
         now_playing_url = k.playback_controller.now_playing_url
-        if now_playing_url and id in now_playing_url:
+        base_id = id.split("_")[0] if "_" in id else id
+        if now_playing_url and (id in now_playing_url or base_id in now_playing_url):
             k.playback_controller.start_song()
 
     # Wait for playlist file to exist
@@ -126,7 +127,8 @@ def stream_progressive_mp4(id):
     # Validate stream ID matches current song to prevent stale requests from setting is_playing
     if not k.playback_controller.is_playing:
         now_playing_url = k.playback_controller.now_playing_url
-        if now_playing_url and id in now_playing_url:
+        base_id = id.split("_")[0] if "_" in id else id
+        if now_playing_url and (id in now_playing_url or base_id in now_playing_url):
             k.playback_controller.start_song()
 
     # Wait for output file to exist
@@ -198,7 +200,8 @@ def stream_full(id):
     # Validate stream ID matches current song to prevent stale requests from setting is_playing
     if not k.playback_controller.is_playing:
         now_playing_url = k.playback_controller.now_playing_url
-        if now_playing_url and id in now_playing_url:
+        base_id = id.split("_")[0] if "_" in id else id
+        if now_playing_url and (id in now_playing_url or base_id in now_playing_url):
             k.playback_controller.start_song()
 
     file_path = os.path.join(get_tmp_dir(), f"{id}.mp4")

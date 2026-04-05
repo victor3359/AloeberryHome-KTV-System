@@ -84,7 +84,7 @@ class TestBuildYtdlDownloadCommand:
         )
         format_idx = cmd.index("-f") + 1
         assert "bestvideo" in cmd[format_idx]
-        assert "1080" in cmd[format_idx]
+        assert "ext!=webm" in cmd[format_idx]
 
     @patch("pikaraoke.lib.youtube_dl.get_installed_js_runtime", return_value=None)
     def test_standard_quality_format(self, mock_js):

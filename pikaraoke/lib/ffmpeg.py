@@ -15,6 +15,81 @@ if TYPE_CHECKING:
     from pikaraoke.lib.file_resolver import FileResolver
 
 
+def build_multi_audio_hls_cmd(
+    fr: "FileResolver",
+    semitones: int = 0,
+    normalize_audio: bool = True,
+    avsync: float = 0,
+    start_position: float = 0,
+) -> list[str]:
+    """Build FFmpeg command for HLS with multiple audio tracks (original + instrumental + guide).
+
+    Returns a command list for subprocess.Popen (bypasses ffmpeg-python because
+    it doesn't support -var_stream_map).
+    """
+    cmd = ["ffmpeg", "-y"]
+
+    # Input 0: main video file
+    if start_position > 0:
+        cmd += ["-ss", str(start_position)]
+    cmd += ["-i", fr.file_path]
+
+    # Input 1: instrumental stem
+    if start_position > 0:
+        cmd += ["-ss", str(start_position)]
+    cmd += ["-i", fr.instrumental_path]
+
+    # Build audio filter chain
+    is_transposed = semitones != 0 and is_transpose_enabled()
+    filters = ""
+    if avsync > 0:
+        filters += f"adelay={avsync * 1000}|{avsync * 1000},"
+    elif avsync < 0:
+        filters += f"atrim=start={-avsync},"
+    if is_transposed:
+        filters += f"rubberband=pitch={2 ** (semitones / 12)},"
+    # Skip loudnorm in multi-audio: it requires two-pass analysis per track,
+    # making initial buffering too slow. Demucs output is already normalized.
+    filters = filters.rstrip(",")
+
+    # 2 audio tracks: original + instrumental (no guide/vocals mixing)
+    if filters:
+        fc = f"[0:a]{filters}[aOrig];[1:a]{filters}[aInst]"
+        cmd += ["-filter_complex", fc]
+        cmd += ["-map", "0:v", "-map", "[aOrig]", "-map", "[aInst]"]
+    else:
+        cmd += ["-map", "0:v", "-map", "0:a", "-map", "1:a"]
+
+    # Codecs
+    vcodec = "copy" if fr.file_extension == ".mp4" else "libx264"
+    if supports_hardware_h264_encoding() and vcodec != "copy":
+        vcodec = "h264_v4l2m2m"
+    cmd += ["-c:v", vcodec, "-c:a", "aac", "-b:a", "192k", "-threads", "2"]
+
+    # HLS with separate video + audio-only renditions (correct var_stream_map syntax)
+    cmd += [
+        "-f",
+        "hls",
+        "-hls_time",
+        "3",
+        "-hls_segment_type",
+        "fmp4",
+        "-hls_playlist_type",
+        "event",
+        "-var_stream_map",
+        "v:0 a:0,agroup:audio,default:yes,name:original" " a:1,agroup:audio,name:instrumental",
+        "-master_pl_name",
+        f"{fr.stream_uid}_master.m3u8",
+        "-hls_segment_filename",
+        f"{fr.tmp_dir}/{fr.stream_uid}_%v_%03d.m4s",
+        "-hls_fmp4_init_filename",
+        f"{fr.stream_uid}_%v_init.mp4",
+        f"{fr.tmp_dir}/{fr.stream_uid}_%v.m3u8",
+    ]
+
+    return cmd
+
+
 def get_media_duration(file_path: str) -> int | None:
     """Get the duration of a media file in seconds.
 
@@ -27,7 +102,7 @@ def get_media_duration(file_path: str) -> int | None:
     try:
         duration = ffmpeg.probe(file_path)["format"]["duration"]
         return round(float(duration))
-    except:
+    except Exception:
         return None
 
 
@@ -40,6 +115,7 @@ def build_ffmpeg_cmd(
     avsync: float = 0,
     cdg_pixel_scaling: bool = False,
     audio_mode: str = "original",
+    start_position: float = 0,
 ) -> Any:
     """Build an ffmpeg command for transcoding media.
 
@@ -86,32 +162,33 @@ def build_ffmpeg_cmd(
 
     # Audio mode: select audio source based on mode
     using_stems = audio_mode != "original" and hasattr(fr, "instrumental_path")
-    needs_reencode = is_cdg or is_transposed or normalize_audio or avsync != 0 or using_stems
+    needs_reencode = (
+        is_cdg
+        or is_transposed
+        or normalize_audio
+        or avsync != 0
+        or using_stems
+        or start_position > 0
+    )
 
     # Copy audio if no processing needed, otherwise re-encode with AAC
     acodec = "aac" if needs_reencode else "copy"
 
-    # For container formats with VFR or timestamp issues, use genpts
+    # Build input options
+    input_kwargs: dict[str, Any] = {}
     if fr.file_extension in [".webm", ".avi", ".mov", ".mkv"]:
-        input = ffmpeg.input(fr.file_path, **{"fflags": "+genpts"})
-    else:
-        input = ffmpeg.input(fr.file_path)
+        input_kwargs["fflags"] = "+genpts"
+    if start_position > 0:
+        input_kwargs["ss"] = start_position
+    input = ffmpeg.input(fr.file_path, **input_kwargs)
 
-    # Select audio source based on mode
+    # Select audio source based on mode (seek stems too if resuming)
+    stem_kwargs: dict[str, Any] = {}
+    if start_position > 0:
+        stem_kwargs["ss"] = start_position
     if audio_mode == "instrumental" and getattr(fr, "instrumental_path", None):
-        instrumental_input = ffmpeg.input(fr.instrumental_path)
+        instrumental_input = ffmpeg.input(fr.instrumental_path, **stem_kwargs)
         audio = instrumental_input.audio
-    elif (
-        audio_mode == "guide"
-        and getattr(fr, "vocals_path", None)
-        and getattr(fr, "instrumental_path", None)
-    ):
-        instrumental_input = ffmpeg.input(fr.instrumental_path)
-        vocals_input = ffmpeg.input(fr.vocals_path)
-        vocals_quiet = vocals_input.audio.filter("volume", 0.3)
-        audio = ffmpeg.filter(
-            [instrumental_input.audio, vocals_quiet], "amix", inputs=2, duration="longest"
-        )
     else:
         audio = input.audio
 
@@ -151,6 +228,7 @@ def build_ffmpeg_cmd(
             vcodec=vcodec,
             acodec=acodec,
             preset="ultrafast",
+            threads=2,
             listen=1,
             f="mp4",
             video_bitrate=vbitrate,
@@ -172,6 +250,7 @@ def build_ffmpeg_cmd(
             ac=2,  # Force stereo
             ar=48000,  # Standard sample rate
             preset="ultrafast",
+            threads=2,
             f="hls",
             hls_time=3,
             hls_list_size=0,
