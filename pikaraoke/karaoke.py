@@ -296,9 +296,9 @@ class Karaoke:
         # Capture current position for seamless resume
         position = self.playback_controller.now_playing_position or 0
 
-        mode_labels = {"original": "Original", "instrumental": "Karaoke", "guide": "Guide Vocal"}
+        mode_labels = {"original": "原唱", "instrumental": "伴奏"}
         label = mode_labels.get(audio_mode, audio_mode)
-        self.log_and_send(_("Audio: %s") % label)
+        self.log_and_send(_("切換為：%s") % label)
         self.queue_manager.enqueue(
             filename, user, semitones, True, audio_mode=audio_mode, start_position=position
         )
@@ -470,7 +470,7 @@ class Karaoke:
             return
         position = self.playback_controller.now_playing_position or 0
         audio_mode = self.playback_controller.now_playing_audio_mode
-        self.log_and_send(_("Transposing by %s semitones: %s") % (semitones, now_playing))
+        self.log_and_send(_("調整音調 %s 個半音：%s") % (semitones, now_playing))
         self.queue_manager.enqueue(
             filename, user, semitones, True, audio_mode=audio_mode, start_position=position
         )

@@ -193,8 +193,8 @@
     } else if (!np || !np.now_playing) {
       html += '<div class="queue-empty">';
       html += '<i class="icon icon-music" style="font-size:3rem; opacity:0.3"></i>';
-      html += '<p>{% trans %}The queue is empty{% endtrans %}</p>';
-      html += '<a href="{{ url_for("songpicker.songpicker") }}" class="pill active" style="margin-top:12px">{% trans %}Go pick songs{% endtrans %}</a>';
+      html += '<p>播放清單是空的</p>';
+      html += '<a href="{{ url_for("songpicker.songpicker") }}" class="pill active" style="margin-top:12px">去點歌</a>';
       html += '</div>';
     }
     return html;
@@ -243,9 +243,9 @@
     if (!np || !np.now_playing) return;
     $('#np-modal-song-title').text(np.now_playing);
     if (np.is_paused) {
-      $('#np-pause-btn').html('<span class="icon mr-2"><i class="icon-play"></i></span>{% trans %}Play{% endtrans %}');
+      $('#np-pause-btn').html('<span class="icon mr-2"><i class="icon-play"></i></span>播放');
     } else {
-      $('#np-pause-btn').html('<span class="icon mr-2"><i class="icon-pause"></i></span>{% trans %}Pause{% endtrans %}');
+      $('#np-pause-btn').html('<span class="icon mr-2"><i class="icon-pause"></i></span>暫停');
     }
     $('#now-playing-options-modal').addClass('is-active');
   };
@@ -271,13 +271,13 @@
         html += '<div class="download-meta"><span>Status: ' + d.status + '</span><span>Speed: ' + d.speed + ' | ETA: ' + d.eta + '</span></div></div>';
       }
       if (status.pending && status.pending.length > 0) {
-        html += '<div class="section-header"><span>{% trans %}Pending downloads{% endtrans %}</span></div>';
+        html += '<div class="section-header"><span>等待下載</span></div>';
         status.pending.forEach(function(d) {
           html += '<div class="download-card glass" style="padding:10px"><span class="has-text-grey">' + (d.display_title || d.video_url) + '</span></div>';
         });
       }
       if (status.errors && status.errors.length > 0) {
-        html += '<div class="section-header"><span class="has-text-danger">{% trans %}Download Errors{% endtrans %}</span></div>';
+        html += '<div class="section-header"><span class="has-text-danger">下載錯誤</span></div>';
         status.errors.forEach(function(d) {
           html += '<div class="download-card glass" style="border-left:3px solid var(--danger); padding:10px">';
           html += '<span>' + (d.title || d.url) + '</span><br><small class="has-text-danger">' + d.error + '</small>';
@@ -402,12 +402,12 @@
       <button id="cp-skip" class="control-panel__btn"><i class="icon-to-end"></i></button>
     </div>
     <div class="control-panel__slider-group">
-      <label><i class="icon-volume-up"></i> {% trans %}Volume{% endtrans %}</label>
+      <label><i class="icon-volume-up"></i> 音量</label>
       <input id="cp-volume" type="range" min="0" max="100" value="85" class="control-panel__slider">
     </div>
     {% if is_transpose_enabled %}
     <div class="control-panel__slider-group">
-      <label><i class="icon-music"></i> {% trans %}Key{% endtrans %} <span id="cp-transpose-label">0 semitones</span></label>
+      <label><i class="icon-music"></i> 升降Key <span id="cp-transpose-label">0</span></label>
       <input id="cp-transpose" type="range" min="-12" max="12" value="0" class="control-panel__slider">
     </div>
     {% endif %}
@@ -419,8 +419,8 @@
 {% if fair_queue_enabled or limit_user_songs_by > 0 %}
 <div class="fair-queue-banner glass" style="margin-top: 68px">
   <i class="icon icon-exchange"></i>
-  {% if fair_queue_enabled %}<b>{% trans %}Fair Queue{% endtrans %}</b>{% endif %}
-  {% if limit_user_songs_by > 0 %} &middot; {% trans %}Max{% endtrans %} <b>{{ limit_user_songs_by }}</b> {% trans %}per person{% endtrans %}{% endif %}
+  {% if fair_queue_enabled %}<b>公平排隊</b>{% endif %}
+  {% if limit_user_songs_by > 0 %} &middot; 最多 <b>{{ limit_user_songs_by }}</b> 首/人{% endif %}
   <span id="fair-queue-counts" style="margin-left: 8px"></span>
 </div>
 {% endif %}
@@ -434,12 +434,12 @@
 <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0;">
   <div style="display:flex; align-items:center; gap:8px">
     <a class="add-random pill active" href="#"><i class="icon icon-plus-circled"></i></a>
-    {% trans %}Add{% endtrans %}
+    加入
     <input id="randomNumberInput" class="pref-input" pattern="\d*" maxlength="2" value="3" min="1" max="99" style="width:42px; text-align:center" />
-    {% trans %}random{% endtrans %}
+    首隨機
   </div>
   <a class="pill" style="border:1px solid var(--danger); color:var(--danger)" href="/queue/edit?action=clear">
-    <i class="icon icon-trash-empty"></i> {% trans %}Clear{% endtrans %}
+    <i class="icon icon-trash-empty"></i> 清除
   </a>
 </div>
 
@@ -450,11 +450,11 @@
     <header class="modal-card-head"><p class="modal-card-title" id="modal-song-title"></p>
       <button class="delete" onclick="closeSongOptions()"></button></header>
     <section class="modal-card-body" style="padding:0">
-      <a id="opt-top" class="panel-block py-3" href="#" onclick="executeQueueAction('top'); return false;"><span class="icon has-text-info mr-2"><i class="icon-angle-double-up"></i></span><b>{% trans %}Play Next{% endtrans %}</b></a>
-      <a id="opt-up" class="panel-block py-3" href="#" onclick="executeQueueAction('up'); return false;"><span class="icon mr-2"><i class="icon-angle-up"></i></span>{% trans %}Move Up{% endtrans %}</a>
-      <a id="opt-down" class="panel-block py-3" href="#" onclick="executeQueueAction('down'); return false;"><span class="icon mr-2"><i class="icon-angle-down"></i></span>{% trans %}Move Down{% endtrans %}</a>
-      <a id="opt-bottom" class="panel-block py-3" href="#" onclick="executeQueueAction('bottom'); return false;"><span class="icon has-text-info mr-2"><i class="icon-angle-double-down"></i></span>{% trans %}Move to Bottom{% endtrans %}</a>
-      <a id="opt-delete" class="panel-block py-3 has-text-danger" href="#" onclick="executeQueueAction('delete'); return false;"><span class="icon mr-2"><i class="icon-trash-empty"></i></span>{% trans %}Remove{% endtrans %}</a>
+      <a id="opt-top" class="panel-block py-3" href="#" onclick="executeQueueAction('top'); return false;"><span class="icon has-text-info mr-2"><i class="icon-angle-double-up"></i></span><b>插播</b></a>
+      <a id="opt-up" class="panel-block py-3" href="#" onclick="executeQueueAction('up'); return false;"><span class="icon mr-2"><i class="icon-angle-up"></i></span>上移</a>
+      <a id="opt-down" class="panel-block py-3" href="#" onclick="executeQueueAction('down'); return false;"><span class="icon mr-2"><i class="icon-angle-down"></i></span>下移</a>
+      <a id="opt-bottom" class="panel-block py-3" href="#" onclick="executeQueueAction('bottom'); return false;"><span class="icon has-text-info mr-2"><i class="icon-angle-double-down"></i></span>移到最後</a>
+      <a id="opt-delete" class="panel-block py-3 has-text-danger" href="#" onclick="executeQueueAction('delete'); return false;"><span class="icon mr-2"><i class="icon-trash-empty"></i></span>移除</a>
     </section>
   </div>
 </div>
@@ -466,9 +466,9 @@
     <header class="modal-card-head"><p class="modal-card-title" id="np-modal-song-title"></p>
       <button class="delete" onclick="closeNowPlayingOptions()"></button></header>
     <section class="modal-card-body" style="padding:0">
-      <a class="panel-block py-3" href="#" onclick="executePlaybackAction('restart'); return false;"><span class="icon mr-2"><i class="icon-to-start"></i></span>{% trans %}Restart{% endtrans %}</a>
-      <a id="np-pause-btn" class="panel-block py-3" href="#" onclick="executePlaybackAction('pause'); return false;"><span class="icon mr-2"><i class="icon-pause"></i></span>{% trans %}Pause{% endtrans %}</a>
-      <a class="panel-block py-3 has-text-danger" href="#" onclick="executePlaybackAction('skip'); return false;"><span class="icon mr-2"><i class="icon-to-end"></i></span>{% trans %}Skip{% endtrans %}</a>
+      <a class="panel-block py-3" href="#" onclick="executePlaybackAction('restart'); return false;"><span class="icon mr-2"><i class="icon-to-start"></i></span>重唱</a>
+      <a id="np-pause-btn" class="panel-block py-3" href="#" onclick="executePlaybackAction('pause'); return false;"><span class="icon mr-2"><i class="icon-pause"></i></span>暫停</a>
+      <a class="panel-block py-3 has-text-danger" href="#" onclick="executePlaybackAction('skip'); return false;"><span class="icon mr-2"><i class="icon-to-end"></i></span>切歌</a>
     </section>
   </div>
 </div>
@@ -476,7 +476,7 @@
 
 <!-- Downloads section -->
 <div id="downloads-section" style="display:none; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
-  <div class="section-header"><span>{% trans %}Downloads{% endtrans %}</span></div>
+  <div class="section-header"><span>下載中</span></div>
   <div id="downloads-container"></div>
 </div>
 

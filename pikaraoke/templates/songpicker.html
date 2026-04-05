@@ -328,14 +328,14 @@ $(function () {
 {# Searching loader #}
 <div id="searching-loader" class="sp-loader" style="display:none">
   <div class="sp-loader__spinner"></div>
-  <span>{% trans %}Searching YouTube...{% endtrans %}</span>
+  <span>搜尋 YouTube 中...</span>
 </div>
 
 {# ===== SEARCH MODE ===== #}
 {% if search_string %}
 
   {# -- Local library matches -- #}
-  <div class="sp-section-header"><i class="icon icon-folder-open-empty"></i> {% trans %}Local Library{% endtrans %}</div>
+  <div class="sp-section-header"><i class="icon icon-folder-open-empty"></i> 本地歌庫</div>
   <div class="sp-song-list" id="local-results">
     {% set search_lower = search_string|lower %}
     {% set local_matches = [] %}
@@ -355,12 +355,12 @@ $(function () {
         {% else %}
           <a class="sp-song-row__btn sp-song-row__btn--add add-song-link"
              href="{{ url_for('queue.enqueue') }}?song={{ url_escape(song.encode('utf-8','surrogateescape')) }}&user="
-             title="{% trans %}Add to queue{% endtrans %}"><i class="icon icon-plus"></i></a>
+             title="加入排隊"><i class="icon icon-plus"></i></a>
         {% endif %}
       </div>
       {% endfor %}
     {% else %}
-      <p class="sp-empty">{% trans %}No local matches{% endtrans %} "{{ search_string }}"</p>
+      <p class="sp-empty">找不到本地歌曲 "{{ search_string }}"</p>
     {% endif %}
   </div>
 
@@ -368,7 +368,7 @@ $(function () {
   {% if search_results %}
   <div class="sp-section-header">
     <i class="icon icon-play"></i> YouTube
-    <span class="sp-tag">{% trans %}Download required{% endtrans %}</span>
+    <span class="sp-tag">需下載</span>
   </div>
   <div class="sp-song-list">
     {% for title, url, id, channel, duration in search_results %}
@@ -392,29 +392,29 @@ $(function () {
   {# -- Pill filter bar -- #}
   <div class="sp-pill-bar">
     <a class="sp-pill {% if not lang and not artist_filter and not filter_mode %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}">
-      <i class="icon icon-list-alt"></i> {% trans %}All{% endtrans %}
+      <i class="icon icon-list-alt"></i> 全部
     </a>
     <a class="sp-pill {% if lang == 'chinese' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?lang=chinese">
-      {% trans %}Chinese{% endtrans %}
+      中文
     </a>
     <a class="sp-pill {% if lang == 'japanese' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?lang=japanese">
-      {% trans %}Japanese{% endtrans %}
+      日文
     </a>
     <a class="sp-pill {% if lang == 'korean' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?lang=korean">
-      {% trans %}Korean{% endtrans %}
+      韓文
     </a>
     <a class="sp-pill {% if lang == 'english' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?lang=english">
-      {% trans %}English{% endtrans %}
+      英文
     </a>
     <span class="sp-pill-divider"></span>
     <a class="sp-pill {% if sort_order == 'Alphabetical' and not filter_mode %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}{% if lang %}?lang={{ lang }}{% endif %}">
       <i class="icon icon-sort-up"></i> A-Z
     </a>
     <a class="sp-pill {% if sort_order == 'Date' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?sort=date{% if lang %}&lang={{ lang }}{% endif %}">
-      <i class="icon icon-sort-down"></i> {% trans %}Newest{% endtrans %}
+      <i class="icon icon-sort-down"></i> 最新
     </a>
     <a class="sp-pill {% if filter_mode == 'recent' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?filter=recent">
-      <i class="icon icon-plus-circled"></i> {% trans %}New{% endtrans %}
+      <i class="icon icon-plus-circled"></i> 新歌
     </a>
   </div>
 
@@ -436,7 +436,7 @@ $(function () {
     {% if letter %}<span><i class="icon icon-search-1"></i> "{{ letter.upper() }}"</span>{% endif %}
     {% if artist_filter %}<span><i class="icon icon-mic-1"></i> {{ artist_filter }}</span>{% endif %}
     <a href="{{ url_for('songpicker.songpicker') }}{% if lang %}?lang={{ lang }}{% endif %}" class="sp-filter-clear">
-      <i class="icon icon-cancel-circled-1"></i> {% trans %}Clear{% endtrans %}
+      <i class="icon icon-cancel-circled-1"></i> 清除
     </a>
   </div>
   {% endif %}
@@ -461,7 +461,7 @@ $(function () {
       {% else %}
         <a class="sp-song-card__action add-song-link"
            href="{{ url_for('queue.enqueue') }}?song={{ url_escape(song.encode('utf-8','surrogateescape')) }}&user="
-           title="{% trans %}Add to queue{% endtrans %}"><i class="icon icon-plus"></i></a>
+           title="加入排隊"><i class="icon icon-plus"></i></a>
       {% endif %}
     </div>
     {% endfor %}

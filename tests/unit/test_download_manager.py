@@ -173,7 +173,7 @@ class TestDownloadManagerExecuteDownload:
         assert rc == 0
         song_manager.songs.find_by_id.assert_called_once_with("/songs", "abc123")
         song_manager.songs.add_if_valid.assert_called_once_with("/songs/Artist - Song---abc123.mp4")
-        assert any("Downloaded" in n for n in notifications)
+        assert any("已下載" in n or "Downloaded" in n for n in notifications)
 
     @patch("flask_babel._", side_effect=lambda x: x)
     @patch("subprocess.Popen")

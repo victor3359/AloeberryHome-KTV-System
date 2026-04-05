@@ -298,7 +298,7 @@ class DownloadManager:
                 self.active_download["status"] = "complete"
 
             # MSG: Message shown after the download is completed
-            self._events.emit("notification", _("Downloaded: %s") % displayed_title, "success")
+            self._events.emit("notification", _("已下載：%s") % displayed_title, "success")
 
             # After download, find the file path by ID
             song_path = None
@@ -318,9 +318,7 @@ class DownloadManager:
 
             # Post-download: run vocal separation + transcription BEFORE queueing
             if song_is_valid and song_path and self._vocal_separator:
-                self._events.emit(
-                    "notification", _("Processing audio: %s") % displayed_title, "info"
-                )
+                self._events.emit("notification", _("正在處理音訊：%s") % displayed_title, "info")
                 try:
                     self._vocal_separator.process(song_path, title=displayed_title)
                 except Exception as e:
