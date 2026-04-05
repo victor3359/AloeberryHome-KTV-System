@@ -125,6 +125,79 @@ def _search_online_lyrics(title: str) -> list[dict] | None:
         return None
 
 
+def _merge_online_text_with_whisper_timing(
+    whisper_segments: list[dict], online_segments: list[dict]
+) -> list[dict]:
+    """Replace Whisper text with online lyrics while keeping Whisper's word timing.
+
+    For each Whisper segment, find the best matching online lyric line by
+    timestamp proximity, then replace the segment text. Word-level timing
+    from Whisper is preserved for smooth karaoke animation.
+    """
+    if not online_segments:
+        return whisper_segments
+
+    # Build a list of online lyrics with timestamps for matching
+    online_lines = [(seg["start"], seg["text"]) for seg in online_segments if seg["text"]]
+
+    result = []
+    for wseg in whisper_segments:
+        w_start = wseg.get("start", 0)
+        w_text = wseg.get("text", "").strip()
+        words = wseg.get("words", [])
+
+        # Find closest online lyric line by start time (within 5 second window)
+        best_match = None
+        best_dist = 5.0
+        for o_start, o_text in online_lines:
+            dist = abs(w_start - o_start)
+            if dist < best_dist:
+                best_dist = dist
+                best_match = o_text
+
+        if best_match and words:
+            # Replace the segment text but keep word-level timing
+            # Distribute online text characters across Whisper word timings
+            online_chars = list(best_match.replace(" ", ""))
+            whisper_words = [w for w in words if w.get("word", "").strip()]
+
+            if whisper_words and online_chars:
+                # Distribute characters proportionally across word slots
+                chars_per_word = max(1, len(online_chars) // len(whisper_words))
+                new_words = []
+                char_idx = 0
+                for i, w in enumerate(whisper_words):
+                    if i == len(whisper_words) - 1:
+                        # Last word gets all remaining characters
+                        chunk = "".join(online_chars[char_idx:])
+                    else:
+                        chunk = "".join(online_chars[char_idx : char_idx + chars_per_word])
+                        char_idx += chars_per_word
+                    if chunk:
+                        new_words.append(
+                            {
+                                "word": chunk,
+                                "start": w["start"],
+                                "end": w["end"],
+                            }
+                        )
+
+                result.append(
+                    {
+                        "start": wseg["start"],
+                        "end": wseg["end"],
+                        "text": best_match,
+                        "words": new_words,
+                    }
+                )
+                continue
+
+        # No match or no words — keep original Whisper segment
+        result.append(wseg)
+
+    return result
+
+
 def _format_ass_time(seconds: float) -> str:
     """Format seconds as ASS timestamp H:MM:SS.cc."""
     h = int(seconds // 3600)
@@ -455,28 +528,26 @@ class VocalSeparator:
                 else:
                     logging.warning("Separation failed for %s: %s", song_path, sep_result.error)
 
-            # Step 2: Try online lyrics first (more accurate text)
-            search_title = title or os.path.basename(song_path)
-            online_segments = _search_online_lyrics(search_title)
-
-            if online_segments:
-                # Online lyrics found — use them directly (no Whisper needed for text)
-                logging.info("Using online synced lyrics for: %s", search_title)
-                ass_content = generate_karaoke_ass(online_segments, title)
-                ass_path = _ass_path_for(song_path)
-                with open(ass_path, "w", encoding="utf-8") as f:
-                    f.write(ass_content)
-                logging.info("Karaoke ASS from online lyrics: %s", ass_path)
-            elif WHISPER_AVAILABLE:
-                # Fallback: Whisper transcription
+            # Step 2: Always use Whisper for word-level timing (smooth animation)
+            # Then optionally correct text with online lyrics
+            if WHISPER_AVAILABLE:
                 trans_result = self.transcribe(song_path)
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
-                    ass_content = generate_karaoke_ass(trans_result.segments, title)
+                    segments = trans_result.segments
+
+                    # Try online lyrics to correct Whisper text errors
+                    search_title = title or os.path.basename(song_path)
+                    online_segments = _search_online_lyrics(search_title)
+                    if online_segments:
+                        segments = _merge_online_text_with_whisper_timing(segments, online_segments)
+                        logging.info("Text corrected with online lyrics")
+
+                    ass_content = generate_karaoke_ass(segments, title)
                     ass_path = _ass_path_for(song_path)
                     with open(ass_path, "w", encoding="utf-8") as f:
                         f.write(ass_content)
-                    logging.info("Karaoke ASS from Whisper: %s", ass_path)
+                    logging.info("Karaoke ASS generated: %s", ass_path)
                 else:
                     logging.warning(
                         "Transcription failed for %s: %s",
