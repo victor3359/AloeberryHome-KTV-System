@@ -42,6 +42,17 @@ def transpose(semitones):
     return redirect(url_for("home.home"))
 
 
+@controller_bp.route("/audio_mode/<mode>", methods=["GET"])
+def audio_mode(mode):
+    """Switch audio mode for the current song (original/instrumental/guide)."""
+    if mode not in ("original", "instrumental", "guide"):
+        return "Invalid audio mode", 400
+    k = get_karaoke_instance()
+    broadcast_event("skip", "audio mode change")
+    k.change_audio_mode(mode)
+    return redirect(url_for("queue.queue"))
+
+
 @controller_bp.route("/restart")
 def restart():
     """Restart the current song from the beginning."""

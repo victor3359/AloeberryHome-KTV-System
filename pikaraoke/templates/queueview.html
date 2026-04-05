@@ -23,6 +23,14 @@
     $(".mini-player__title").text(np.now_playing);
     $(".mini-player__singer").text(singerDisplay);
 
+    // Audio mode indicator
+    if (np.has_stems && np.now_playing_audio_mode !== "original") {
+      var modeLabel = np.now_playing_audio_mode === "guide" ? "Guide" : "Karaoke";
+      $(".mini-player__mode").text(modeLabel).show();
+    } else {
+      $(".mini-player__mode").hide();
+    }
+
     if (np.is_paused) {
       $("#mini-pause-btn i").removeClass("icon-pause").addClass("icon-play");
     } else {
@@ -53,6 +61,14 @@
         if (np.now_playing_transpose !== undefined) {
           $("#cp-transpose").val(np.now_playing_transpose);
           $("#cp-transpose-label").text(getSemitonesLabel(np.now_playing_transpose));
+        }
+        // Show audio mode toggle if stems available
+        if (np.has_stems) {
+          $("#cp-audio-mode-group").show();
+          $(".audio-mode-btn").removeClass("active");
+          $(".audio-mode-btn[data-mode='" + (np.now_playing_audio_mode || "original") + "']").addClass("active");
+        } else {
+          $("#cp-audio-mode-group").hide();
         }
       }
       $panel.addClass("is-open");
@@ -292,6 +308,15 @@
     // Mini player controls
     $("#mini-pause-btn").click(function(e) { e.stopPropagation(); $.get('/pause'); });
     $("#mini-skip-btn").click(function(e) { e.stopPropagation(); $.get('/skip'); });
+
+    // Audio mode toggle
+    $(document).on("click", ".audio-mode-btn", function() {
+      var mode = $(this).data("mode");
+      $.get("/audio_mode/" + mode);
+      $(".audio-mode-btn").removeClass("active");
+      $(this).addClass("active");
+      toggleControlPanel();
+    });
     $(".mini-player").click(function(e) {
       if ($(e.target).closest('.mini-player__btn').length === 0) toggleControlPanel();
     });
@@ -332,7 +357,7 @@
 <div class="mini-player glass is-hidden">
   <div class="mini-player__info">
     <div class="mini-player__title">--</div>
-    <div class="mini-player__singer">--</div>
+    <div class="mini-player__singer">-- <span class="mini-player__mode" style="display:none; color:var(--accent-cyan, #06b6d4); font-size:0.75rem; margin-left:4px"></span></div>
   </div>
   <div class="mini-player__controls">
     <button id="mini-pause-btn" class="mini-player__btn"><i class="icon-pause"></i></button>
@@ -364,6 +389,14 @@
       <input id="cp-transpose" type="range" min="-12" max="12" value="0" class="control-panel__slider">
     </div>
     {% endif %}
+    <div class="control-panel__slider-group" id="cp-audio-mode-group" style="display:none">
+      <label><i class="icon-headphones"></i> {% trans %}Audio{% endtrans %}</label>
+      <div class="audio-mode-toggle">
+        <button class="audio-mode-btn active" data-mode="original">{% trans %}Original{% endtrans %}</button>
+        <button class="audio-mode-btn" data-mode="instrumental">{% trans %}Karaoke{% endtrans %}</button>
+        <button class="audio-mode-btn" data-mode="guide">{% trans %}Guide{% endtrans %}</button>
+      </div>
+    </div>
   </div>
 </div>
 

@@ -8,6 +8,7 @@ import subprocess
 import uuid
 from queue import Queue
 from threading import Thread
+from typing import Any
 
 from pikaraoke.lib.events import EventSystem
 from pikaraoke.lib.preference_manager import PreferenceManager
@@ -38,6 +39,7 @@ class DownloadManager:
         download_path: str,
         youtubedl_proxy: str | None = None,
         additional_ytdl_args: str | None = None,
+        vocal_separator: Any = None,
     ) -> None:
         """Initialize the download manager.
 
@@ -54,6 +56,7 @@ class DownloadManager:
         self._preferences = preferences
         self._song_manager = song_manager
         self._queue_manager = queue_manager
+        self._vocal_separator = vocal_separator
         self._download_path = download_path
         self._youtubedl_proxy = youtubedl_proxy
         self._additional_ytdl_args = additional_ytdl_args
@@ -318,6 +321,13 @@ class DownloadManager:
                 logging.warning(
                     f"Could not find downloaded song in {self._download_path} matching ID: {video_id}"
                 )
+
+            # Post-download: run vocal separation + transcription in background
+            if song_is_valid and song_path and self._vocal_separator:
+                try:
+                    self._vocal_separator.process(song_path, title=displayed_title)
+                except Exception as e:
+                    logging.warning("Vocal processing failed for %s: %s", song_path, e)
 
             if enqueue:
                 if song_is_valid and song_path:

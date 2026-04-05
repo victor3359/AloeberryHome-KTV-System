@@ -54,11 +54,11 @@ class SongManager:
         return name
 
     def _get_companion_files(self, song_path: str) -> list[str]:
-        """Return paths to companion files (.cdg, .ass) that exist alongside a song."""
+        """Return paths to companion files that exist alongside a song."""
         base = os.path.splitext(song_path)[0]
         companions = []
-        for ext in (".cdg", ".ass"):
-            path = base + ext
+        for suffix in (".cdg", ".ass", "_karaoke.ass", "_vocals.mp3", "_instrumental.mp3"):
+            path = base + suffix
             if os.path.exists(path):
                 companions.append(path)
         return companions

@@ -113,6 +113,8 @@ class FileResolver:
     cdg_file_path: str | None = None
     file_extension: str | None = None
     ass_file_path: str | None = None
+    vocals_path: str | None = None
+    instrumental_path: str | None = None
 
     def __init__(self, file_path: str, streaming_format: str = "hls") -> None:
         """Initialize the FileResolver with a media file path.
@@ -257,3 +259,17 @@ class FileResolver:
         if not self.file_path:
             raise ValueError("File path is required to process file")
         self.duration = get_media_duration(self.file_path)
+
+        # Discover vocal separation stems
+        base_name = os.path.splitext(file_path)[0]
+        vocals = base_name + "_vocals.mp3"
+        instrumental = base_name + "_instrumental.mp3"
+        if os.path.exists(vocals):
+            self.vocals_path = vocals
+        if os.path.exists(instrumental):
+            self.instrumental_path = instrumental
+
+        # Prefer auto-generated karaoke ASS over manually placed ASS
+        karaoke_ass = base_name + "_karaoke.ass"
+        if os.path.exists(karaoke_ass) and not self.ass_file_path:
+            self.ass_file_path = karaoke_ass

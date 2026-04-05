@@ -2547,3 +2547,34 @@ a.dropdown-item.is-active {
         max-width: 100%;
     }
 }
+
+/* --------------------------------------------------------------------------
+   Audio Mode Toggle
+   -------------------------------------------------------------------------- */
+.audio-mode-toggle {
+    display: flex;
+    gap: 4px;
+}
+
+.audio-mode-btn {
+    flex: 1;
+    padding: 8px 0;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-button, 8px);
+    background: transparent;
+    color: var(--text-secondary, #94a3b8);
+    cursor: pointer;
+    font-size: 0.85rem;
+    min-height: var(--tap-target, 44px);
+    transition: all 0.2s ease;
+}
+
+.audio-mode-btn:hover {
+    background: var(--bg-surface-hover, rgba(255, 255, 255, 0.1));
+}
+
+.audio-mode-btn.active {
+    background: var(--accent-gradient, linear-gradient(135deg, #7c3aed, #06b6d4));
+    color: white;
+    border-color: transparent;
+}

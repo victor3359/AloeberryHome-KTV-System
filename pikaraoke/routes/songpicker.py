@@ -80,9 +80,7 @@ def songpicker():
     filter_mode = request.args.get("filter")
     if filter_mode == "recent":
         cutoff = time.time() - 7 * 86400
-        available_songs = [
-            s for s in available_songs if os.path.getmtime(s) > cutoff
-        ]
+        available_songs = [s for s in available_songs if os.path.getmtime(s) > cutoff]
         available_songs.sort(key=lambda x: os.path.getmtime(x), reverse=True)
         sort_order = "Recent"
     elif request.args.get("sort") == "date":
@@ -120,9 +118,7 @@ def songpicker():
     # --- Queue file set and artists ---
     queue_files = {item["file"] for item in k.queue_manager.queue}
     artist_counts = Counter(
-        a
-        for s in all_songs
-        if (a := _extract_artist(k.song_manager.filename_from_path(s)))
+        a for s in all_songs if (a := _extract_artist(k.song_manager.filename_from_path(s)))
     )
     top_artists = [a for a, c in artist_counts.most_common(30) if c >= 2]
 

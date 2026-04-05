@@ -42,6 +42,7 @@ class PlaybackController:
     now_playing_user: str | None = None
     now_playing_user2: str | None = None
     now_playing_transpose: int = 0
+    now_playing_audio_mode: str = "original"
     now_playing_duration: int | None = None
     now_playing_url: str | None = None
     now_playing_subtitle_url: str | None = None
@@ -75,7 +76,12 @@ class PlaybackController:
         return self.stream_manager.ffmpeg_process
 
     def play_file(
-        self, file_path: str, user: str, semitones: int = 0, user2: str | None = None
+        self,
+        file_path: str,
+        user: str,
+        semitones: int = 0,
+        user2: str | None = None,
+        audio_mode: str = "original",
     ) -> PlaybackResult:
         """Start playback of a media file.
 
@@ -94,7 +100,7 @@ class PlaybackController:
             f"Playing file: {file_path} for user: {user}, transposed {semitones} semitones"
         )
 
-        result = self.stream_manager.play_file(file_path, semitones)
+        result = self.stream_manager.play_file(file_path, semitones, audio_mode)
 
         if not result.success:
             return result
@@ -104,6 +110,7 @@ class PlaybackController:
         self.now_playing_user = user
         self.now_playing_user2 = user2
         self.now_playing_transpose = semitones
+        self.now_playing_audio_mode = audio_mode
         self.now_playing_duration = result.duration
         self.now_playing_url = result.stream_url
         self.now_playing_subtitle_url = result.subtitle_url
@@ -213,6 +220,7 @@ class PlaybackController:
             "now_playing_url": self.now_playing_url,
             "now_playing_subtitle_url": self.now_playing_subtitle_url,
             "now_playing_position": self.now_playing_position,
+            "now_playing_audio_mode": self.now_playing_audio_mode,
             "is_paused": self.is_paused,
         }
 
@@ -227,6 +235,7 @@ class PlaybackController:
         self.is_paused = True
         self.is_playing = False
         self.now_playing_transpose = 0
+        self.now_playing_audio_mode = "original"
         self.now_playing_duration = None
         self.now_playing_position = None
 

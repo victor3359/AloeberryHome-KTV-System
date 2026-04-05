@@ -33,6 +33,7 @@ from pikaraoke.lib.playback_controller import PlaybackController
 from pikaraoke.lib.preference_manager import PreferenceManager
 from pikaraoke.lib.queue_manager import QueueManager
 from pikaraoke.lib.song_manager import SongManager
+from pikaraoke.lib.vocal_separator import VocalSeparator
 from pikaraoke.lib.youtube_dl import (
     get_search_results,
     get_youtubedl_version,
@@ -257,6 +258,12 @@ class Karaoke:
         )
 
         # Initialize and start download manager
+        # Initialize vocal separator (optional, requires demucs/whisper)
+        self.vocal_separator = VocalSeparator(
+            events=self.events,
+            download_path=self.download_path,
+        )
+
         self.download_manager = DownloadManager(
             events=self.events,
             preferences=self.preferences,
@@ -265,6 +272,7 @@ class Karaoke:
             download_path=self.download_path,
             youtubedl_proxy=self.youtubedl_proxy,
             additional_ytdl_args=self.additional_ytdl_args,
+            vocal_separator=self.vocal_separator if self.vocal_separator.is_available() else None,
         )
         self.download_manager.start()
 
@@ -274,6 +282,22 @@ class Karaoke:
         Priority: CLI argument (if provided) > config file > PreferenceManager.DEFAULTS
         """
         self.preferences.apply_all(**cli_overrides)
+
+    def change_audio_mode(self, audio_mode: str) -> None:
+        """Restart the current song with a different audio mode (original/instrumental/guide)."""
+        filename = self.playback_controller.now_playing_filename
+        user = self.playback_controller.now_playing_user
+        semitones = self.playback_controller.now_playing_transpose
+
+        if filename is None or user is None:
+            logging.warning("Cannot change audio mode: no song currently playing")
+            return
+
+        mode_labels = {"original": "Original", "instrumental": "Karaoke", "guide": "Guide Vocal"}
+        label = mode_labels.get(audio_mode, audio_mode)
+        self.log_and_send(_("Audio: %s") % label)
+        self.queue_manager.enqueue(filename, user, semitones, True, audio_mode=audio_mode)
+        self.playback_controller.skip(log_action=False)
 
     def reset_session(self) -> None:
         """Reset all session state for a new KTV session."""
@@ -518,6 +542,12 @@ class Karaoke:
         # Get playback state from PlaybackController
         playback_state = self.playback_controller.get_now_playing()
 
+        # Check if stems exist for the current song
+        has_stems = False
+        filename = self.playback_controller.now_playing_filename
+        if filename:
+            has_stems = self.vocal_separator.has_stems(filename)
+
         return {
             **playback_state,
             "up_next": next_song["title"] if next_song else None,
@@ -525,6 +555,7 @@ class Karaoke:
             "next_user2": next_song.get("user2") if next_song else None,
             "volume": self.volume,
             "session_elapsed": int(time.time() - self.session_start),
+            "has_stems": has_stems,
         }
 
     def update_now_playing_socket(self) -> None:
@@ -583,7 +614,11 @@ class Karaoke:
                     if song_title:
                         self.play_stats.increment(song_title)
                     result = self.playback_controller.play_file(
-                        song["file"], song["user"], song["semitones"], song.get("user2")
+                        song["file"],
+                        song["user"],
+                        song["semitones"],
+                        song.get("user2"),
+                        song.get("audio_mode", "original"),
                     )
 
                     if not result.success and result.error:
