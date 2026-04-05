@@ -682,23 +682,22 @@ class VocalSeparator:
             output_file = tempfile.mktemp(suffix=".json")
             # Build Whisper subprocess script as a proper Python file
             lang_arg = f", language='{detected_lang}'" if detected_lang else ""
-            script_lines = [
-                "import sys, json, warnings, os",
-                "warnings.filterwarnings('ignore')",
-                "os.environ['OMP_NUM_THREADS'] = '10'",
-                "import torch",
-                "torch.set_num_threads(10)",
-                "import whisper",
-                "dev = 'cuda' if torch.cuda.is_available() else 'cpu'",
-                f"model = whisper.load_model('{self._whisper_model}', device=dev)",
-                f"r = model.transcribe(sys.argv[1], word_timestamps=True, verbose=False, "
-                f"condition_on_previous_text=False{lang_arg})",
-                "segs = [{'start':s['start'],'end':s['end'],'text':s['text'],"
-                "'words':s.get('words',[])} for s in r.get('segments',[])]",
-                f"json.dump({{'segments':segs,'language':r.get('language','')}},"
-                f"open(sys.argv[2],'w',encoding='utf-8'),ensure_ascii=False)",
-            ]
-            script = "\n".join(script_lines)
+            transcribe_call = (
+                f"r = model.transcribe(sys.argv[1], word_timestamps=True, "
+                f"verbose=False, condition_on_previous_text=False{lang_arg})"
+            )
+            script = (
+                "import sys, json, warnings, os\n"
+                "warnings.filterwarnings('ignore')\n"
+                "os.environ['OMP_NUM_THREADS'] = '10'\n"
+                "import torch; torch.set_num_threads(10)\n"
+                "import whisper\n"
+                "dev = 'cuda' if torch.cuda.is_available() else 'cpu'\n"
+                f"model = whisper.load_model('{self._whisper_model}', device=dev)\n"
+                f"{transcribe_call}\n"
+                "segs = [dict(start=s['start'],end=s['end'],text=s['text'],words=s.get('words',[])) for s in r.get('segments',[])]\n"
+                "json.dump(dict(segments=segs,language=r.get('language','')),open(sys.argv[2],'w',encoding='utf-8'),ensure_ascii=False)\n"
+            )
 
             if detected_lang:
                 logging.info("Language hint from filename: %s", detected_lang)
