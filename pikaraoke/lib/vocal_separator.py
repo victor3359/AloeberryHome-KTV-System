@@ -676,6 +676,8 @@ class VocalSeparator:
             import warnings
 
             warnings.filterwarnings("ignore", message=".*Triton.*")
+            warnings.filterwarnings("ignore", message=".*CPU when CUDA.*")
+            warnings.filterwarnings("ignore", message=".*FP16 is not supported.*")
             torch.set_num_threads(10)  # 10 of 16 cores for fast transcription
             # Cache model globally to avoid reloading 400MB per song
             cache_key = f"{self._whisper_model}_{device}"
