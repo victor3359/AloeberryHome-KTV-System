@@ -160,14 +160,19 @@ class Karaoke:
             socketio: SocketIO instance for real-time event emission.
             preferred_language: Language code for UI (e.g., 'en', 'de_DE').
         """
+        from logging.handlers import RotatingFileHandler
+
         log_file = os.path.join(get_data_directory(), "pikaraoke.log")
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
         logging.basicConfig(
             format="[%(asctime)s] %(levelname)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
             level=int(log_level),
             handlers=[
                 logging.StreamHandler(),
-                logging.FileHandler(log_file, encoding="utf-8"),
+                file_handler,
             ],
         )
 

@@ -157,6 +157,20 @@ def main() -> None:
     # log_path = os.path.join(get_data_directory(), 'pikaraoke.log')
     # logging.basicConfig(filename=log_path, level=logging.INFO)
 
+    # Clean up orphaned FFmpeg processes from previous crashes
+    try:
+        import psutil
+
+        for proc in psutil.process_iter(["name", "pid"]):
+            if proc.info["name"] and "ffmpeg" in proc.info["name"].lower():
+                try:
+                    proc.kill()
+                    logging.info("Killed orphaned FFmpeg process (PID %d)", proc.info["pid"])
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+    except Exception:
+        pass
+
     if not is_ffmpeg_installed():
         logging.error(
             "ffmpeg is not installed, which is required to run PiKaraoke. See: https://www.ffmpeg.org/"

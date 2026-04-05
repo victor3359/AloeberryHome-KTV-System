@@ -1,12 +1,14 @@
 """Socket.IO event handlers for PiKaraoke."""
 
 import logging
+import threading
 
 from flask import request
 
 from pikaraoke.lib.current_app import get_karaoke_instance
 
 # Track connected splash screen clients and the elected master
+_splash_lock = threading.Lock()
 splash_connections = set()
 master_splash_id = None
 
@@ -50,16 +52,17 @@ def setup_socket_events(socketio):
         """Handle splash screen registration and assign master/slave roles."""
         global master_splash_id
         sid = request.sid
-        splash_connections.add(sid)
-        logging.info(f"Splash screen registered: {sid}")
+        with _splash_lock:
+            splash_connections.add(sid)
+            logging.info(f"Splash screen registered: {sid}")
 
-        if master_splash_id is None:
-            master_splash_id = sid
-            socketio.emit("splash_role", "master", room=sid)
-            logging.info(f"Master splash screens assigned: {sid}")
-        else:
-            socketio.emit("splash_role", "slave", room=sid)
-            logging.info(f"Slave splash screens assigned: {sid}")
+            if master_splash_id is None:
+                master_splash_id = sid
+                socketio.emit("splash_role", "master", room=sid)
+                logging.info(f"Master splash screens assigned: {sid}")
+            else:
+                socketio.emit("splash_role", "slave", room=sid)
+                logging.info(f"Slave splash screens assigned: {sid}")
 
     @socketio.on("show_leaderboard")
     def handle_show_leaderboard() -> None:
@@ -103,15 +106,15 @@ def setup_socket_events(socketio):
         """Handle Socket.IO client disconnection and manage splash role handover."""
         global master_splash_id
         sid = request.sid
-        if sid in splash_connections:
-            splash_connections.remove(sid)
-            logging.info(f"Splash screen disconnected: {sid}")
-            if sid == master_splash_id:
-                master_splash_id = None
-                logging.info("Master splash disconnected, electing new master")
-                if splash_connections:
-                    # Elect new master from remaining connections
-                    new_master = next(iter(splash_connections))
-                    master_splash_id = new_master
-                    socketio.emit("splash_role", "master", room=new_master)
+        with _splash_lock:
+            if sid in splash_connections:
+                splash_connections.remove(sid)
+                logging.info(f"Splash screen disconnected: {sid}")
+                if sid == master_splash_id:
+                    master_splash_id = None
+                    logging.info("Master splash disconnected, electing new master")
+                    if splash_connections:
+                        new_master = next(iter(splash_connections))
+                        master_splash_id = new_master
+                        socketio.emit("splash_role", "master", room=new_master)
                     logging.info(f"New master splash elected: {new_master}")

@@ -673,7 +673,18 @@ class VocalSeparator:
             import warnings
 
             warnings.filterwarnings("ignore", message=".*Triton.*")
-            model = whisper.load_model(self._whisper_model, device=device)
+            # Cache model globally to avoid reloading 400MB per song
+            cache_key = f"{self._whisper_model}_{device}"
+            if not hasattr(VocalSeparator, "_whisper_cache"):
+                VocalSeparator._whisper_cache = {}
+            if cache_key not in VocalSeparator._whisper_cache:
+                logging.info(
+                    "Loading Whisper model '%s' on %s (first time)...", self._whisper_model, device
+                )
+                VocalSeparator._whisper_cache[cache_key] = whisper.load_model(
+                    self._whisper_model, device=device
+                )
+            model = VocalSeparator._whisper_cache[cache_key]
 
             # Detect language from filename to avoid misidentification
             detected_lang = self._detect_language_from_filename(song_path)
