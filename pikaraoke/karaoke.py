@@ -293,10 +293,15 @@ class Karaoke:
             logging.warning("Cannot change audio mode: no song currently playing")
             return
 
+        # Capture current position for seamless resume
+        position = self.playback_controller.now_playing_position or 0
+
         mode_labels = {"original": "Original", "instrumental": "Karaoke", "guide": "Guide Vocal"}
         label = mode_labels.get(audio_mode, audio_mode)
         self.log_and_send(_("Audio: %s") % label)
-        self.queue_manager.enqueue(filename, user, semitones, True, audio_mode=audio_mode)
+        self.queue_manager.enqueue(
+            filename, user, semitones, True, audio_mode=audio_mode, start_position=position
+        )
         self.playback_controller.skip(log_action=False)
 
     def reset_session(self) -> None:
@@ -463,10 +468,12 @@ class Karaoke:
         if filename is None or user is None:
             logging.warning("Cannot transpose: no song currently playing")
             return
-        # MSG: Message shown after the song is transposed, first is the semitones and then the song name
+        position = self.playback_controller.now_playing_position or 0
+        audio_mode = self.playback_controller.now_playing_audio_mode
         self.log_and_send(_("Transposing by %s semitones: %s") % (semitones, now_playing))
-        # Insert the same song at the top of the queue with transposition
-        self.queue_manager.enqueue(filename, user, semitones, True)
+        self.queue_manager.enqueue(
+            filename, user, semitones, True, audio_mode=audio_mode, start_position=position
+        )
         self.playback_controller.skip(log_action=False)
 
     def volume_change(self, vol_level: float) -> bool:
@@ -624,6 +631,7 @@ class Karaoke:
                         song["semitones"],
                         song.get("user2"),
                         audio_mode,
+                        song.get("start_position", 0),
                     )
 
                     if not result.success and result.error:

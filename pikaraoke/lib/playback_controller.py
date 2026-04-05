@@ -82,6 +82,7 @@ class PlaybackController:
         semitones: int = 0,
         user2: str | None = None,
         audio_mode: str = "original",
+        start_position: float = 0,
     ) -> PlaybackResult:
         """Start playback of a media file.
 
@@ -100,7 +101,7 @@ class PlaybackController:
             f"Playing file: {file_path} for user: {user}, transposed {semitones} semitones"
         )
 
-        result = self.stream_manager.play_file(file_path, semitones, audio_mode)
+        result = self.stream_manager.play_file(file_path, semitones, audio_mode, start_position)
 
         if not result.success:
             return result

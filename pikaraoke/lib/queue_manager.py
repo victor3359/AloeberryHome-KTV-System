@@ -102,6 +102,7 @@ class QueueManager:
         log_action: bool = True,
         user2: str | None = None,
         audio_mode: str = "original",
+        start_position: float = 0,
     ) -> list[bool | str]:
         """Add a song to the queue. Returns [success, message]."""
         title = self._resolve_title(song_path)
@@ -128,6 +129,7 @@ class QueueManager:
             "title": title,
             "semitones": semitones,
             "audio_mode": audio_mode,
+            "start_position": start_position,
         }
         if add_to_front:
             # MSG: Message shown after the song is added to the top of the queue

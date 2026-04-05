@@ -74,7 +74,11 @@ class StreamManager:
         self.ffmpeg_log: Queue | None = None
 
     def play_file(
-        self, file_path: str, semitones: int = 0, audio_mode: str = "original"
+        self,
+        file_path: str,
+        semitones: int = 0,
+        audio_mode: str = "original",
+        start_position: float = 0,
     ) -> PlaybackResult:
         """Start playback of a media file.
 
@@ -105,6 +109,7 @@ class StreamManager:
             or avsync != 0
             or is_hls
             or audio_mode != "original"
+            or start_position > 0
         )
 
         logging.debug(f"Requires transcoding: {requires_transcoding}")
@@ -130,7 +135,7 @@ class StreamManager:
             is_buffering_complete = True
         else:
             is_transcoding_complete, is_buffering_complete = self._transcode_file(
-                fr, semitones, is_hls, audio_mode
+                fr, semitones, is_hls, audio_mode, start_position
             )
 
         subtitle_url = None
@@ -173,7 +178,12 @@ class StreamManager:
         return False
 
     def _transcode_file(
-        self, fr: FileResolver, semitones: int, is_hls: bool, audio_mode: str = "original"
+        self,
+        fr: FileResolver,
+        semitones: int,
+        is_hls: bool,
+        audio_mode: str = "original",
+        start_position: float = 0,
     ) -> tuple[bool, bool]:
         """Transcode a file using FFmpeg.
 
@@ -204,6 +214,7 @@ class StreamManager:
             avsync,
             cdg_pixel_scaling,
             audio_mode,
+            start_position,
         )
         self.ffmpeg_process = ffmpeg_cmd.run_async(pipe_stderr=True, pipe_stdin=True)
 
