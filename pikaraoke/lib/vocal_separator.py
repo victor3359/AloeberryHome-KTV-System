@@ -118,7 +118,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,Arial,58,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,40,40,60,1
+Style: Karaoke,Arial,88,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,5,3,2,40,40,70,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -155,11 +155,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 continue
             w_start = word_info.get("start", 0.0)
             w_end = word_info.get("end", w_start + 0.1)
-            duration_cs = max(int((w_end - w_start) * 100), 5)
-            karaoke_parts.append(f"{{\\kf{duration_cs}}}{word}")
+            duration_cs = max(int((w_end - w_start) * 100), 10)
+            # Prepend space inside the tag (not between tags) for smooth \kf fill
+            prefix = " " if karaoke_parts else ""
+            karaoke_parts.append(f"{{\\kf{duration_cs}}}{prefix}{word}")
 
         if karaoke_parts:
-            text = " ".join(karaoke_parts)
+            text = "".join(karaoke_parts)
             lines.append(f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{text}")
 
     return "\n".join(lines) + "\n"

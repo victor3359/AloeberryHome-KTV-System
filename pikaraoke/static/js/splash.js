@@ -141,9 +141,11 @@ const endSong = async (reason = null, showScore = false) => {
   if (nowPlaying.up_next) {
     $("#transition-singer-name").text(nowPlaying.next_user || "");
     $("#transition-song-name").text(nowPlaying.up_next);
-    $("#transition-screen").css("transform", "scale(0.9)").fadeIn(600).animate({opacity: 1}, {
-      step: function() { $(this).css("transform", "scale(1)"); }, duration: 400
-    });
+    var ts = document.getElementById("transition-screen");
+    ts.style.display = "flex";
+    ts.classList.remove("transition-enter-active");
+    void ts.offsetWidth;
+    ts.classList.add("transition-enter-active");
     // Countdown timer
     var delay = PikaraokeConfig.splashDelay || 2;
     var remaining = delay;
@@ -360,7 +362,11 @@ const handleNowPlayingUpdate = (np) => {
       video: video,
       subUrl: subtitleUrl,
       fonts: ["/static/fonts/Arial.ttf", "/static/fonts/DroidSansFallback.ttf"],
-      debug: true,
+      renderMode: "wasm-blend",
+      targetFps: 30,
+      prescaleFactor: 1.0,
+      prescaleHeightLimit: 1080,
+      debug: false,
       workerUrl: "/static/js/subtitles-octopus-worker.js"
     };
     try {
@@ -380,12 +386,12 @@ const handleNowPlayingUpdate = (np) => {
     $("#progress-bar-container").hide();
     $("#progress-bar-fill").css("width", "0%");
     if (!np.up_next) {
-      $("#transition-screen").fadeOut(400);
+      $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
     }
   }
 
   if (np.now_playing_url && np.now_playing_url !== currentVideoUrl) {
-    $("#transition-screen").fadeOut(400);
+    $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
     $("#progress-bar-fill").css("width", "0%");
     $("#progress-bar-container").show();
     currentVideoUrl = np.now_playing_url;
