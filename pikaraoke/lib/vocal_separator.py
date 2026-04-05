@@ -225,6 +225,17 @@ class VocalSeparator:
             self._events.emit("separation_started", {"song_path": song_path})
             logging.info("Starting vocal separation: %s", song_path)
 
+            # Auto-detect CUDA at runtime
+            device = self._device
+            try:
+                import torch
+
+                if device == "cuda" and not torch.cuda.is_available():
+                    logging.warning("CUDA not available for Demucs, using CPU")
+                    device = "cpu"
+            except ImportError:
+                device = "cpu"
+
             cmd = [
                 sys.executable,
                 "-m",
@@ -232,7 +243,7 @@ class VocalSeparator:
                 "--two-stems",
                 "vocals",
                 "-d",
-                self._device,
+                device,
                 "--mp3",
                 "--mp3-bitrate",
                 "192",
@@ -241,26 +252,29 @@ class VocalSeparator:
                 song_path,
             ]
 
+            # First run downloads model (~80MB), allow extra time
+            logging.info("Running demucs (device=%s)...", device)
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=900,
             )
 
             if result.returncode != 0:
-                error = result.stderr[:500] if result.stderr else "Unknown error"
-                logging.error("Demucs failed: %s", error)
-
-                # Retry with CPU if CUDA failed
-                if self._device == "cuda" and "CUDA" in error:
-                    logging.warning("CUDA failed, retrying with CPU...")
-                    cmd[cmd.index("cuda")] = "cpu"
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
-                    if result.returncode != 0:
-                        return SeparationResult(success=False, error="Demucs failed on CPU too")
-                else:
-                    return SeparationResult(success=False, error=error)
+                # Filter progress bars from stderr to find real errors
+                stderr_lines = (result.stderr or "").splitlines()
+                error_lines = [
+                    ln
+                    for ln in stderr_lines
+                    if ln.strip()
+                    and "B/s]" not in ln
+                    and "it/s]" not in ln
+                    and not ln.strip().startswith(("%", "|"))
+                ]
+                error = "\n".join(error_lines[-10:]) if error_lines else result.stderr[:500]
+                logging.error("Demucs failed (exit %d): %s", result.returncode, error)
+                return SeparationResult(success=False, error=error)
 
             # Demucs outputs to <output_dir>/htdemucs/<stem_name>/
             song_stem = Path(song_path).stem
