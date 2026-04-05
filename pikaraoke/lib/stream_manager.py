@@ -458,7 +458,11 @@ class StreamManager:
             removed = 0
             for f in os.listdir(tmp_dir):
                 fp = os.path.join(tmp_dir, f)
-                if os.path.isfile(fp) and f.endswith((".m4s", ".m3u8", ".mp4", ".ts")):
+                if (
+                    os.path.isfile(fp)
+                    and f.endswith((".m4s", ".m3u8", ".mp4", ".ts"))
+                    and (time.time() - os.path.getmtime(fp) > 2)
+                ):
                     try:
                         os.remove(fp)
                         removed += 1

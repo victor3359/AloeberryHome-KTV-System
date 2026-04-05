@@ -293,17 +293,16 @@ class Karaoke:
         self.preferences.apply_all(**cli_overrides)
 
     def change_audio_mode(self, audio_mode: str) -> None:
-        """Restart the current song with a different audio mode (original/instrumental/guide)."""
-        filename = self.playback_controller.now_playing_filename
-        user = self.playback_controller.now_playing_user
-        semitones = self.playback_controller.now_playing_transpose
+        """Restart the current song with a different audio mode (original/instrumental)."""
+        with self.playback_controller._lock:
+            filename = self.playback_controller.now_playing_filename
+            user = self.playback_controller.now_playing_user
+            semitones = self.playback_controller.now_playing_transpose
+            position = self.playback_controller.now_playing_position or 0
 
         if filename is None or user is None:
             logging.warning("Cannot change audio mode: no song currently playing")
             return
-
-        # Capture current position for seamless resume
-        position = self.playback_controller.now_playing_position or 0
 
         mode_labels = {"original": "原唱", "instrumental": "伴奏"}
         label = mode_labels.get(audio_mode, audio_mode)

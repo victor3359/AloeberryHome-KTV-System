@@ -102,7 +102,7 @@ def get_media_duration(file_path: str) -> int | None:
     try:
         duration = ffmpeg.probe(file_path)["format"]["duration"]
         return round(float(duration))
-    except:
+    except Exception:
         return None
 
 
