@@ -32,11 +32,16 @@ except ImportError:
     pass
 
 try:
-    import whisper  # noqa: F401
+    import faster_whisper  # noqa: F401
 
     WHISPER_AVAILABLE = True
 except ImportError:
-    pass
+    try:
+        import whisper  # noqa: F401
+
+        WHISPER_AVAILABLE = True
+    except ImportError:
+        pass
 
 
 @dataclass
@@ -718,23 +723,31 @@ class VocalSeparator:
             import tempfile
 
             output_file = tempfile.mktemp(suffix=".json")
-            # Build Whisper subprocess script as a proper Python file
-            lang_arg = f", language='{detected_lang}'" if detected_lang else ""
-            transcribe_call = (
-                f"r = model.transcribe(sys.argv[1], word_timestamps=True, "
-                f"verbose=False, condition_on_previous_text=False{lang_arg})"
-            )
+            lang_arg = f"'{detected_lang}'" if detected_lang else "None"
+            # Use faster-whisper (CTranslate2) if available, fallback to openai-whisper
             script = (
                 "import sys, json, warnings, os\n"
                 "warnings.filterwarnings('ignore')\n"
                 "os.environ['OMP_NUM_THREADS'] = '10'\n"
-                "import torch; torch.set_num_threads(10)\n"
-                "import whisper\n"
-                "# Whisper forced to CPU: GPU shared with browser causes splash crash\n"
-                f"model = whisper.load_model('{self._whisper_model}', device='cpu')\n"
-                f"{transcribe_call}\n"
-                "segs = [dict(start=s['start'],end=s['end'],text=s['text'],words=s.get('words',[]),no_speech_prob=s.get('no_speech_prob',0)) for s in r.get('segments',[])]\n"
-                "json.dump(dict(segments=segs,language=r.get('language','')),open(sys.argv[2],'w',encoding='utf-8'),ensure_ascii=False)\n"
+                "try:\n"
+                "    from faster_whisper import WhisperModel\n"
+                f"    model = WhisperModel('{self._whisper_model}', device='cpu', compute_type='int8', cpu_threads=10)\n"
+                f"    segs_iter, info = model.transcribe(sys.argv[1], word_timestamps=True, condition_on_previous_text=False, language={lang_arg})\n"
+                "    segs = []\n"
+                "    for s in segs_iter:\n"
+                "        words = [dict(word=w.word, start=w.start, end=w.end) for w in (s.words or [])]\n"
+                "        segs.append(dict(start=s.start, end=s.end, text=s.text, words=words, no_speech_prob=s.no_speech_prob))\n"
+                "    lang = info.language\n"
+                "except ImportError:\n"
+                "    import torch; torch.set_num_threads(10)\n"
+                "    import whisper\n"
+                f"    model = whisper.load_model('{self._whisper_model}', device='cpu')\n"
+                f"    r = model.transcribe(sys.argv[1], word_timestamps=True, verbose=False, condition_on_previous_text=False"
+                + (f", language='{detected_lang}'" if detected_lang else "")
+                + ")\n"
+                "    segs = [dict(start=s['start'],end=s['end'],text=s['text'],words=s.get('words',[]),no_speech_prob=s.get('no_speech_prob',0)) for s in r.get('segments',[])]\n"
+                "    lang = r.get('language', '')\n"
+                "json.dump(dict(segments=segs, language=lang), open(sys.argv[2], 'w', encoding='utf-8'), ensure_ascii=False)\n"
             )
 
             if detected_lang:

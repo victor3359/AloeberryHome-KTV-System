@@ -73,9 +73,7 @@ class SongDatabase:
                 cols = ["file_path"] + list(kwargs.keys())
                 placeholders = ", ".join("?" for _ in cols)
                 vals = [file_path] + list(kwargs.values())
-                conn.execute(
-                    f"INSERT INTO songs ({', '.join(cols)}) VALUES ({placeholders})", vals
-                )
+                conn.execute(f"INSERT INTO songs ({', '.join(cols)}) VALUES ({placeholders})", vals)
             conn.commit()
             conn.close()
 
@@ -191,9 +189,7 @@ class SongDatabase:
         """Get user's favorite file paths as a set."""
         with self._lock:
             conn = self._get_conn()
-            rows = conn.execute(
-                "SELECT file_path FROM favorites WHERE user=?", (user,)
-            ).fetchall()
+            rows = conn.execute("SELECT file_path FROM favorites WHERE user=?", (user,)).fetchall()
             conn.close()
             return {r["file_path"] for r in rows}
 

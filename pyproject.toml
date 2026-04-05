@@ -26,6 +26,7 @@ dependencies = [
   "gevent>=24.11.1",
   "syncedlyrics>=1.0.1",
   "opencc-python-reimplemented>=0.1.7",
+  "faster-whisper>=1.2.1",
 ]
 
 [project.optional-dependencies]
