@@ -186,9 +186,11 @@ def delete_file(query):
             "is-danger",
         )
     else:
+        display_name = k.song_manager.filename_from_path(song_path)
         k.song_manager.delete(song_path)
-        # MSG: Message shown after deleting a song. Followed by the song path
-        flash(_("Song deleted: %s") % k.song_manager.filename_from_path(song_path), "is-warning")
+        # Clean up play stats and favorites for deleted song
+        k.play_stats.remove(display_name)
+        flash(_("Song deleted: %s") % display_name, "is-warning")
     referrer = query.get("referrer") or url_for("files.browse")
     return redirect(referrer)
 

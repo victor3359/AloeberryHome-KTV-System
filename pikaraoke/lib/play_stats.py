@@ -47,6 +47,14 @@ class PlayStats:
             self._counts[key] = self._counts.get(key, 0) + 1
             self._save()
 
+    def remove(self, filename: str) -> None:
+        """Remove play stats for a deleted song."""
+        with self._lock:
+            key = filename.strip()
+            if key in self._counts:
+                del self._counts[key]
+                self._save()
+
     def get_count(self, filename: str) -> int:
         """Get the play count for a song."""
         return self._counts.get(filename.strip(), 0)
