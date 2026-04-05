@@ -249,6 +249,99 @@ def _format_ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
+def _correct_typos_with_online_lyrics(
+    whisper_segments: list[dict], online_segments: list[dict]
+) -> list[dict]:
+    """Correct Whisper homophone errors using online lyrics as reference.
+
+    Only replaces individual characters when the overall line similarity
+    is high (>60%), keeping Whisper's text structure and word timing intact.
+    Does NOT replace entire lines — only fixes likely typos.
+    """
+    from difflib import SequenceMatcher
+
+    online_lines = [(seg["start"], seg["text"]) for seg in online_segments if seg["text"]]
+    if not online_lines:
+        return whisper_segments
+
+    corrected_count = 0
+    result = []
+    for wseg in whisper_segments:
+        w_text = wseg.get("text", "").strip()
+        w_start = wseg.get("start", 0)
+        words = wseg.get("words", [])
+
+        # Find closest online line by timestamp (within 3 second window)
+        best_match = None
+        best_dist = 3.0
+        for o_start, o_text in online_lines:
+            dist = abs(w_start - o_start)
+            if dist < best_dist:
+                best_dist = dist
+                best_match = o_text
+
+        if not best_match or not words:
+            result.append(wseg)
+            continue
+
+        # Check similarity — only correct if >60% similar (same line, minor typos)
+        w_chars = w_text.replace(" ", "")
+        o_chars = best_match.replace(" ", "")
+        ratio = SequenceMatcher(None, w_chars, o_chars).ratio()
+
+        if ratio < 0.6:
+            # Too different — probably wrong match, keep Whisper as-is
+            result.append(wseg)
+            continue
+
+        if ratio > 0.99:
+            # Already identical, no correction needed
+            result.append(wseg)
+            continue
+
+        # Character-level correction: replace individual wrong chars in each word
+        o_idx = 0
+        new_words = []
+        for w in words:
+            word_text = w.get("word", "").strip()
+            if not word_text:
+                new_words.append(w)
+                continue
+
+            corrected_word = ""
+            for ch in word_text:
+                if o_idx < len(o_chars) and ch != o_chars[o_idx]:
+                    # Replace with online character (likely correct)
+                    corrected_word += o_chars[o_idx]
+                    corrected_count += 1
+                elif o_idx < len(o_chars):
+                    corrected_word += ch
+                else:
+                    corrected_word += ch
+                o_idx += 1
+
+            new_words.append(
+                {
+                    "word": corrected_word,
+                    "start": w["start"],
+                    "end": w["end"],
+                }
+            )
+
+        result.append(
+            {
+                "start": wseg["start"],
+                "end": wseg["end"],
+                "text": best_match,
+                "words": new_words,
+            }
+        )
+
+    if corrected_count > 0:
+        logging.info("Corrected %d characters with online lyrics", corrected_count)
+    return result
+
+
 def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
     """Filter out Whisper hallucinated segments (fake text during silence).
 
@@ -628,6 +721,13 @@ class VocalSeparator:
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
                     segments = _filter_whisper_hallucinations(trans_result.segments)
+
+                    # Try online lyrics for typo correction (character-level only)
+                    search_title = title or os.path.basename(song_path)
+                    online_segments = _search_online_lyrics(search_title)
+                    if online_segments:
+                        segments = _correct_typos_with_online_lyrics(segments, online_segments)
+
                     ass_content = generate_karaoke_ass(segments, title)
                     ass_path = _ass_path_for(song_path)
                     with open(ass_path, "w", encoding="utf-8") as f:
