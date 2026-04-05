@@ -399,6 +399,9 @@ class VocalSeparator:
             if device == "cuda" and not torch.cuda.is_available():
                 logging.warning("CUDA not available for Whisper, falling back to CPU")
                 device = "cpu"
+            import warnings
+
+            warnings.filterwarnings("ignore", message=".*Triton.*")
             model = whisper.load_model(self._whisper_model, device=device)
 
             # Detect language from filename to avoid misidentification
