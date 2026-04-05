@@ -160,10 +160,15 @@ class Karaoke:
             socketio: SocketIO instance for real-time event emission.
             preferred_language: Language code for UI (e.g., 'en', 'de_DE').
         """
+        log_file = os.path.join(get_data_directory(), "pikaraoke.log")
         logging.basicConfig(
             format="[%(asctime)s] %(levelname)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
             level=int(log_level),
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler(log_file, encoding="utf-8"),
+            ],
         )
 
         # Initialize event system and preferences (foundation for all components)
