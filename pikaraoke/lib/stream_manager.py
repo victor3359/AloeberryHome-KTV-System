@@ -202,7 +202,7 @@ class StreamManager:
         logging.info("Starting multi-audio HLS transcode: %s", " ".join(cmd[:10]) + "...")
         # Lower priority so playback transcoding doesn't starve the main thread
         _creationflags = (
-            subprocess.CREATE_BELOW_NORMAL_PRIORITY_CLASS if sys.platform == "win32" else 0
+            0x00004000 if sys.platform == "win32" else 0
         )
         self.ffmpeg_process = subprocess.Popen(
             cmd, stderr=subprocess.PIPE, stdin=subprocess.PIPE, creationflags=_creationflags

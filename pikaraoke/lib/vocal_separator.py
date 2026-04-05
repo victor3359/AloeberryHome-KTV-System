@@ -584,7 +584,7 @@ class VocalSeparator:
             }
             # Lower priority on Windows so playback isn't starved
             creationflags = (
-                subprocess.CREATE_BELOW_NORMAL_PRIORITY_CLASS if sys.platform == "win32" else 0
+                0x00004000 if sys.platform == "win32" else 0
             )
             result = subprocess.run(
                 cmd,
