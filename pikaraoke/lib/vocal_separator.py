@@ -660,6 +660,11 @@ class VocalSeparator:
             return "ko"
         if re.search(r"[\u4e00-\u9fff]", name):
             return "zh"
+        # Vietnamese: Latin with unique diacritics (ơ ư ă đ ờ ị ứ ề ộ ả etc.)
+        if re.search(r"[\u01a0\u01a1\u01af\u01b0\u0102\u0103\u0110\u0111]", name):
+            return "vi"
+        if re.search(r"[\u1ea0-\u1ef9]", name):
+            return "vi"
         return None
 
     def transcribe(self, song_path: str) -> TranscriptionResult:
