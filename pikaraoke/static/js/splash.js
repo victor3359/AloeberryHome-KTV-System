@@ -775,6 +775,15 @@ const setupSocketEvents = () => {
     var trackIndex = window.audioTrackMap[mode];
     if (trackIndex !== undefined) {
       hlsInstance.audioTrack = trackIndex;
+      // Re-sync subtitle renderer after track switch to prevent stutter
+      if (octopusInstance) {
+        var video = getVideoPlayer();
+        if (video) {
+          setTimeout(function() {
+            octopusInstance.setCurrentTime(video.currentTime);
+          }, 200);
+        }
+      }
       console.log("Audio track switched to: " + mode + " (index " + trackIndex + ")");
     }
   });

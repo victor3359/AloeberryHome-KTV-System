@@ -207,7 +207,53 @@ def _format_ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = 0.3) -> str:
+def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
+    """Filter out Whisper hallucinated segments (fake text during silence).
+
+    Common hallucinations: repeated text, composer/lyricist credits,
+    nonsensical repetitions during instrumental intros.
+    """
+    import re
+
+    filtered = []
+    seen_texts: dict[str, int] = {}
+
+    for seg in segments:
+        text = seg.get("text", "").strip()
+        if not text:
+            continue
+
+        # Skip very short segments (likely noise)
+        duration = seg.get("end", 0) - seg.get("start", 0)
+        if duration < 0.3:
+            continue
+
+        # Skip segments with high no_speech_prob (if available)
+        if seg.get("no_speech_prob", 0) > 0.7:
+            continue
+
+        # Track repeated text — hallucination often repeats the same phrase
+        normalized = re.sub(r"\s+", "", text)
+        seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
+        if seen_texts[normalized] > 2:
+            continue
+
+        # Skip common hallucination patterns (credits, attributions)
+        hallucination_patterns = [
+            r"^[\s]*[作詞詞曲編][:：]",  # 作詞: / 作曲: / 編曲:
+            r"^[\s]*[Ll]yrics?\s*[:：]",
+            r"^[\s]*[Cc]omposed?\s*[:：]",
+            r"^[\s]*[Mm]usic\s*[:：]",
+        ]
+        if any(re.match(pat, text) for pat in hallucination_patterns):
+            continue
+
+        filtered.append(seg)
+
+    return filtered
+
+
+def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = 0.0) -> str:
     """Generate ASS subtitle content with karaoke timing tags.
 
     Args:
@@ -539,7 +585,7 @@ class VocalSeparator:
                 trans_result = self.transcribe(song_path)
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
-                    segments = trans_result.segments
+                    segments = _filter_whisper_hallucinations(trans_result.segments)
 
                     # Try online lyrics to correct Whisper text errors
                     search_title = title or os.path.basename(song_path)
