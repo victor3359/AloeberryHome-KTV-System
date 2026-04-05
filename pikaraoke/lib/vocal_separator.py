@@ -564,6 +564,8 @@ class VocalSeparator:
                 "vocals",
                 "-d",
                 device,
+                "--segment",
+                "10",  # Process 10s chunks (reduces peak GPU memory)
                 "--mp3",
                 "--mp3-bitrate",
                 "192",
@@ -683,8 +685,10 @@ class VocalSeparator:
             import warnings
 
             warnings.filterwarnings("ignore", message=".*Triton.*")
-            # Limit CPU threads to avoid starving playback
+            # Limit resources to avoid starving playback
             torch.set_num_threads(2)
+            if torch.cuda.is_available():
+                torch.cuda.set_per_process_memory_fraction(0.5)  # Reserve 50% VRAM for display
             # Cache model globally to avoid reloading 400MB per song
             cache_key = f"{self._whisper_model}_{device}"
             if not hasattr(VocalSeparator, "_whisper_cache"):
