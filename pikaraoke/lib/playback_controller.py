@@ -124,8 +124,8 @@ class PlaybackController:
 
             self.events.emit("playback_started")
 
-            # Wait for client to connect
-            max_retries = 100
+            # Wait for client to connect (multi-audio HLS needs more time for initial segments)
+            max_retries = 300
             while not self.is_playing and max_retries > 0:
                 time.sleep(0.1)
                 max_retries -= 1
