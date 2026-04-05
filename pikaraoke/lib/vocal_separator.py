@@ -342,16 +342,45 @@ def _correct_typos_with_online_lyrics(
     return result
 
 
+_HALLUCINATION_KEYWORDS = [
+    "作詞",
+    "作曲",
+    "編曲",
+    "填詞",
+    "監製",
+    "製作人",
+    "lyrics by",
+    "composed by",
+    "music by",
+    "arranged by",
+    "written by",
+    "produced by",
+    "directed by",
+    "字幕",
+    "歌詞提供",
+    "music video",
+    "official mv",
+    "subscribe",
+    "訂閱",
+    "點讚",
+    "like and subscribe",
+    "copyright",
+    "版權",
+    "all rights reserved",
+]
+
+
 def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
     """Filter out Whisper hallucinated segments (fake text during silence).
 
     Common hallucinations: repeated text, composer/lyricist credits,
-    nonsensical repetitions during instrumental intros.
+    nonsensical repetitions during instrumental intros/outros.
     """
     import re
 
     filtered = []
     seen_texts: dict[str, int] = {}
+    prev_normalized = ""
 
     for seg in segments:
         text = seg.get("text", "").strip()
@@ -363,25 +392,29 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
         if duration < 0.1:
             continue
 
-        # Skip segments with high no_speech_prob (if available)
-        if seg.get("no_speech_prob", 0) > 0.7:
+        # Skip segments with high no_speech_prob (silence detected)
+        if seg.get("no_speech_prob", 0) > 0.5:
             continue
 
-        # Track repeated text — hallucination often repeats the same phrase
+        # Skip suspiciously long segments (normal lyric line is 2-10s)
+        if duration > 20:
+            continue
+
+        # Keyword-based hallucination detection (case-insensitive substring match)
+        text_lower = text.lower()
+        if any(kw in text_lower for kw in _HALLUCINATION_KEYWORDS):
+            continue
+
+        # Track repeated text — hallucination repeats same phrase
         normalized = re.sub(r"\s+", "", text)
         seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
-        if seen_texts[normalized] > 4:
+        if seen_texts[normalized] > 3:
             continue
 
-        # Skip common hallucination patterns (credits, attributions)
-        hallucination_patterns = [
-            r"^[\s]*[作詞詞曲編][:：]",  # 作詞: / 作曲: / 編曲:
-            r"^[\s]*[Ll]yrics?\s*[:：]",
-            r"^[\s]*[Cc]omposed?\s*[:：]",
-            r"^[\s]*[Mm]usic\s*[:：]",
-        ]
-        if any(re.match(pat, text) for pat in hallucination_patterns):
+        # Skip consecutive identical lines (adjacent duplicates)
+        if normalized == prev_normalized:
             continue
+        prev_normalized = normalized
 
         filtered.append(seg)
 
@@ -700,7 +733,7 @@ class VocalSeparator:
                 "# Whisper forced to CPU: GPU shared with browser causes splash crash\n"
                 f"model = whisper.load_model('{self._whisper_model}', device='cpu')\n"
                 f"{transcribe_call}\n"
-                "segs = [dict(start=s['start'],end=s['end'],text=s['text'],words=s.get('words',[])) for s in r.get('segments',[])]\n"
+                "segs = [dict(start=s['start'],end=s['end'],text=s['text'],words=s.get('words',[]),no_speech_prob=s.get('no_speech_prob',0)) for s in r.get('segments',[])]\n"
                 "json.dump(dict(segments=segs,language=r.get('language','')),open(sys.argv[2],'w',encoding='utf-8'),ensure_ascii=False)\n"
             )
 
@@ -741,6 +774,7 @@ class VocalSeparator:
                     "end": seg["end"],
                     "text": seg["text"],
                     "words": seg.get("words", []),
+                    "no_speech_prob": seg.get("no_speech_prob", 0),
                 }
                 segments.append(segment_data)
 

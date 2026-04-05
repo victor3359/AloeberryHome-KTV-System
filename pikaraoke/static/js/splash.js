@@ -550,7 +550,7 @@ const setupVideoPlayer = () => {
   video.addEventListener("timeupdate", (e) => {
     $("#current").text(formatTime(video.currentTime));
     const duration = video.duration || nowPlaying.now_playing_duration;
-    if (duration > 0) {
+    if (duration > 0 && video.currentTime > 2) {
       $("#progress-bar-fill").css("width", (video.currentTime / duration * 100) + "%");
     }
   });
