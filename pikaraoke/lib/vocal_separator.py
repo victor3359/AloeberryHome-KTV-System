@@ -739,7 +739,7 @@ class VocalSeparator:
                 }
                 segments.append(segment_data)
 
-            language = result.get("language", "")
+            language = data.get("language", "")
             logging.info(
                 "Transcription complete: %d segments, language=%s", len(segments), language
             )
