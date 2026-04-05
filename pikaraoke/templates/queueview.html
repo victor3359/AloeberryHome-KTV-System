@@ -309,6 +309,15 @@
   });
   window.socket.off("processing_progress"); window.socket.on("processing_progress", function(data) {
     if (!data) return;
+    window._lastProcessingProgress = data;  // Persist across page switches
+    _renderProcessingProgress(data);
+  });
+  // Restore progress after SPA page switch
+  if (window._lastProcessingProgress && window._lastProcessingProgress.percent < 100) {
+    _renderProcessingProgress(window._lastProcessingProgress);
+  }
+
+  function _renderProcessingProgress(data) {
     var stage = data.stage || "";
     var pct = data.percent || 0;
     var color = pct >= 100 ? "var(--color-success, #10b981)" : "var(--accent-cyan, #06b6d4)";
@@ -321,7 +330,11 @@
     html += '<div style="height:100%; width:' + pct + '%; border-radius:2px; background:linear-gradient(90deg, #7c3aed, #06b6d4); transition:width 0.5s ease"></div>';
     html += '</div></div>';
     $("#processing-status").html(html).show();
-  });
+    if (pct >= 100) {
+      window._lastProcessingProgress = null;
+      setTimeout(function() { $("#processing-status").fadeOut(); }, 5000);
+    }
+  }
   window.queuePageState.previousQueue = null;
   window.queuePageState.previousNowPlaying = null;
 

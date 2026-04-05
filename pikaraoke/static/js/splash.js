@@ -397,8 +397,10 @@ const handleNowPlayingUpdate = (np) => {
 
   if (np.now_playing_url && np.now_playing_url !== currentVideoUrl) {
     $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
-    $("#progress-bar-fill").css("width", "0%");
+    $("#progress-bar-fill").css({"width": "0%", "transition": "none"});
     $("#progress-bar-container").show();
+    // Re-enable smooth transition after initial buffering settles
+    setTimeout(function() { $("#progress-bar-fill").css("transition", "width 0.8s linear"); }, 3000);
     currentVideoUrl = np.now_playing_url;
     const streamUrl = np.now_playing_url;
     $("#video-source").attr("src", "");
