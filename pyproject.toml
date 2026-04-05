@@ -24,6 +24,10 @@ dependencies = [
   "yt-dlp[default]>=2026.03.03",
   "flask-socketio>=5.5.0",
   "gevent>=24.11.1",
+  "demucs>=4.0.1",
+  "openai-whisper>=20250625",
+  "torch>=2.6.0",
+  "torchaudio>=2.6.0",
 ]
 
 [project.optional-dependencies]
@@ -78,6 +82,16 @@ reportMissingTypeStubs = false
 
 pythonVersion = "3.10"
 pythonPlatform = "Linux"
+
+# uv: use PyTorch CUDA index for torch packages (not CPU-only from PyPI)
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchaudio = { index = "pytorch-cu124" }
 
 [tool.coverage.run]
 omit = [
