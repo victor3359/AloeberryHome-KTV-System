@@ -191,9 +191,9 @@
         html += '</div>';
       });
     } else if (!np || !np.now_playing) {
-      html += '<div class="queue-empty">';
-      html += '<i class="icon icon-music" style="font-size:3rem; opacity:0.3"></i>';
-      html += '<p>播放清單是空的</p>';
+      html += '<div class="queue-empty" style="text-align:center; padding:40px 20px; color:var(--text-secondary, #94a3b8)">';
+      html += '<i class="icon icon-music" style="font-size:2rem; opacity:0.4; display:block; margin-bottom:12px"></i>';
+      html += '<p style="font-size:0.95rem; margin-bottom:16px">目前沒有排隊的歌曲</p>';
       html += '<a href="{{ url_for("songpicker.songpicker") }}" class="pill active" style="margin-top:12px">去點歌</a>';
       html += '</div>';
     }
@@ -268,7 +268,8 @@
         var cls = d.status === 'complete' ? 'is-success' : d.status === 'error' ? 'is-danger' : 'is-info';
         html += '<div class="download-card glass"><h4>' + d.title + '</h4>';
         html += '<progress class="progress ' + cls + '" value="' + d.progress + '" max="100">' + d.progress + '%</progress>';
-        html += '<div class="download-meta"><span>Status: ' + d.status + '</span><span>Speed: ' + d.speed + ' | ETA: ' + d.eta + '</span></div></div>';
+        var statusLabel = d.status === 'downloading' ? '下載中' : d.status === 'complete' ? '完成' : d.status;
+        html += '<div class="download-meta"><span>' + statusLabel + '</span><span>' + d.speed + ' | 剩餘 ' + d.eta + '</span></div></div>';
       }
       if (status.pending && status.pending.length > 0) {
         html += '<div class="section-header"><span>等待下載</span></div>';

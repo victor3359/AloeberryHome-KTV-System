@@ -3084,3 +3084,32 @@ select option:checked {
 
 /* Selectize overrides for dark theme */
 .optgroup-header { font-weight: bold; }
+
+/* Download card */
+.download-card {
+    padding: 14px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    background: var(--bg-surface, rgba(255, 255, 255, 0.05));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.download-card h4 {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary, #f1f5f9);
+    margin-bottom: 8px;
+}
+
+.download-card .progress {
+    height: 4px;
+    border-radius: 2px;
+    margin-bottom: 6px;
+}
+
+.download-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    color: var(--text-secondary, #94a3b8);
+}
