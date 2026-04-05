@@ -1470,7 +1470,6 @@ version = "1.19.0"
 source = { editable = "." }
 dependencies = [
     { name = "babel" },
-    { name = "demucs" },
     { name = "ffmpeg-python" },
     { name = "flask" },
     { name = "flask-babel" },
@@ -1478,18 +1477,21 @@ dependencies = [
     { name = "flask-smorest" },
     { name = "flask-socketio" },
     { name = "gevent" },
-    { name = "openai-whisper" },
     { name = "opencc-python-reimplemented" },
     { name = "psutil" },
     { name = "qrcode", extra = ["png"] },
     { name = "requests" },
     { name = "syncedlyrics" },
-    { name = "torch" },
-    { name = "torchaudio" },
     { name = "yt-dlp", extra = ["default"] },
 ]
 
 [package.optional-dependencies]
+ai = [
+    { name = "demucs" },
+    { name = "openai-whisper" },
+    { name = "torch" },
+    { name = "torchaudio" },
+]
 dev = [
     { name = "pre-commit" },
     { name = "pytest" },
@@ -1506,7 +1508,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "babel", specifier = "==2.17.0" },
-    { name = "demucs", specifier = ">=4.0.1" },
+    { name = "demucs", marker = "extra == 'ai'", specifier = ">=4.0.1" },
     { name = "ffmpeg-python", specifier = "==0.2.0" },
     { name = "flask", specifier = ">=3.1.0,<3.1.3" },
     { name = "flask-babel", specifier = "==4.0.0" },
@@ -1514,7 +1516,7 @@ requires-dist = [
     { name = "flask-smorest", specifier = ">=0.46.0" },
     { name = "flask-socketio", specifier = ">=5.5.0" },
     { name = "gevent", specifier = ">=24.11.1" },
-    { name = "openai-whisper", specifier = ">=20250625" },
+    { name = "openai-whisper", marker = "extra == 'ai'", specifier = ">=20250625" },
     { name = "opencc-python-reimplemented", specifier = ">=0.1.7" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7.1" },
     { name = "psutil", specifier = "==7.2.1" },
@@ -1523,11 +1525,11 @@ requires-dist = [
     { name = "qrcode", extras = ["png"], specifier = "==8.2" },
     { name = "requests", specifier = "==2.32.5" },
     { name = "syncedlyrics", specifier = ">=1.0.1" },
-    { name = "torch", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cu124" },
-    { name = "torchaudio", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cu124" },
+    { name = "torch", marker = "extra == 'ai'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cu124" },
+    { name = "torchaudio", marker = "extra == 'ai'", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cu124" },
     { name = "yt-dlp", extras = ["default"], specifier = ">=2026.3.3" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["ai", "dev"]
 
 [package.metadata.requires-dev]
 dev = [

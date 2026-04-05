@@ -24,15 +24,17 @@ dependencies = [
   "yt-dlp[default]>=2026.03.03",
   "flask-socketio>=5.5.0",
   "gevent>=24.11.1",
-  "demucs>=4.0.1",
-  "openai-whisper>=20250625",
-  "torch>=2.6.0",
-  "torchaudio>=2.6.0",
   "syncedlyrics>=1.0.1",
   "opencc-python-reimplemented>=0.1.7",
 ]
 
 [project.optional-dependencies]
+ai = [
+  "demucs>=4.0.1",
+  "openai-whisper>=20250625",
+  "torch>=2.6.0",
+  "torchaudio>=2.6.0",
+]
 dev = [
   "pre-commit>=3.7.1",
   "pytest>=9.0.2",
