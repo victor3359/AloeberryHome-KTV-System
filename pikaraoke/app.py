@@ -126,9 +126,10 @@ def get_locale() -> str | None:
         # App context not available or karaoke instance not initialized yet
         pass
 
-    # Check URL arguments
-    if request.args.get("lang"):
-        session["lang"] = request.args.get("lang")
+    # Check URL arguments (only accept valid Babel locale codes, not song language filters)
+    url_lang = request.args.get("lang")
+    if url_lang and url_lang in LANGUAGES.keys():
+        session["lang"] = url_lang
         locale = session.get("lang", "en")
     # Use browser header
     else:

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -225,7 +226,7 @@ class VocalSeparator:
             logging.info("Starting vocal separation: %s", song_path)
 
             cmd = [
-                "python",
+                sys.executable,
                 "-m",
                 "demucs",
                 "--two-stems",
@@ -310,9 +311,14 @@ class VocalSeparator:
 
         try:
             logging.info("Starting transcription: %s", audio_source)
+            import torch
             import whisper
 
-            model = whisper.load_model(self._whisper_model, device=self._device)
+            device = self._device
+            if device == "cuda" and not torch.cuda.is_available():
+                logging.warning("CUDA not available for Whisper, falling back to CPU")
+                device = "cpu"
+            model = whisper.load_model(self._whisper_model, device=device)
             result = model.transcribe(
                 audio_source,
                 word_timestamps=True,
