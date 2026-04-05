@@ -127,6 +127,7 @@ class StreamManager:
         vocals = getattr(fr, "vocals_path", None)
         has_multi_audio = (
             is_hls
+            and semitones == 0  # Multi-audio incompatible with rubberband (too slow)
             and isinstance(instrumental, str)
             and isinstance(vocals, str)
             and os.path.exists(instrumental)

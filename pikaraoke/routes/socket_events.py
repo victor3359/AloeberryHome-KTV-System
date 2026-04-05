@@ -40,6 +40,11 @@ def setup_socket_events(socketio):
         k = get_karaoke_instance()
         k.reset_now_playing_notification()
 
+    @socketio.on("pitch_shift")
+    def pitch_shift(semitones) -> None:
+        """Broadcast pitch shift to all splash screens (client-side processing)."""
+        socketio.emit("pitch_shift", semitones, namespace="/")
+
     @socketio.on("register_splash")
     def register_splash() -> None:
         """Handle splash screen registration and assign master/slave roles."""

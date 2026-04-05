@@ -745,6 +745,23 @@ const setupSocketEvents = () => {
     $("#leaderboard-screen").fadeOut(400);
   });
 
+  // Client-side pitch shift (instant, no re-encoding)
+  socket.on("pitch_shift", (semitones) => {
+    const video = getVideoPlayer();
+    if (!video) return;
+    // Use playbackRate to shift pitch. preservesPitch=false makes rate change also change pitch.
+    // For pure pitch shift without tempo change, we'd need a WASM rubberband.
+    // This approximation is acceptable for small adjustments (+-3 semitones).
+    if (semitones === 0) {
+      video.playbackRate = 1.0;
+      video.preservesPitch = true;
+    } else {
+      video.preservesPitch = false;
+      video.playbackRate = Math.pow(2, semitones / 12);
+    }
+    console.log("Pitch shift: " + semitones + " semitones, rate=" + video.playbackRate.toFixed(3));
+  });
+
   // Instant audio track switching (multi-audio HLS)
   socket.on("audio_mode_switch", (mode) => {
     if (!hlsInstance || !window.audioTrackMap) return;

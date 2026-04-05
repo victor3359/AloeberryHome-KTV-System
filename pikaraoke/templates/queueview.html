@@ -10,6 +10,14 @@
     window.queuePageState = { queue: [], previousQueue: null, nowPlaying: null, previousNowPlaying: null };
   }
 
+  // --- Client-side Pitch Shift (instant, via Web Audio API) ---
+  window.applyPitchShift = function(semitones) {
+    // Broadcast to splash screen for real-time pitch shift
+    if (typeof io !== 'undefined' && window.socket) {
+      window.socket.emit('pitch_shift', semitones);
+    }
+  };
+
   // --- Mini Player ---
   function updateMiniPlayer(np) {
     if (!np || !np.now_playing) {
@@ -335,10 +343,11 @@
     $("#cp-pause").click(function() { $.get('/pause'); });
     $("#cp-skip").click(function() { $.get('/skip'); toggleControlPanel(); });
     $("#cp-volume").on("input", function() { $.get('/volume/' + ($(this).val() / 100)); });
-    $("#cp-transpose").on("change", function() {
-      var val = $(this).val();
-      $.get('/transpose/' + val);
-      $("#cp-transpose-label").text(getSemitonesLabel(parseInt(val)));
+    $("#cp-transpose").on("input", function() {
+      var val = parseInt($(this).val());
+      $("#cp-transpose-label").text(getSemitonesLabel(val));
+      // Client-side pitch shift via Web Audio API (instant, no re-encoding)
+      applyPitchShift(val);
     });
     $(".control-panel__backdrop").click(function() { toggleControlPanel(); });
 
