@@ -96,7 +96,7 @@
   <!-- QR Code / URL card -->
   <div class="accordion-card glass">
     <div class="accordion-header">
-      <span><i class="icon icon-qrcode"></i> {% trans %}Share{% endtrans %}</span>
+      <span><i class="icon icon-info-circled"></i> {% trans %}Share{% endtrans %}</span>
       <span class="accordion-chevron"></span>
     </div>
     <div class="accordion-body" style="text-align:center">
@@ -204,8 +204,8 @@
 
       <h4>{% trans %}Actions{% endtrans %}</h4>
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px">
-        <a class="pill" href="{{ url_for('admin.refresh') }}"><i class="icon icon-arrows-cw"></i> {% trans %}Rescan songs{% endtrans %}</a>
-        <a id="update-ytdl-link" class="pill" href="{{ url_for('admin.update_ytdl') }}"><i class="icon icon-download"></i> {% trans %}Update yt-dlp{% endtrans %}</a>
+        <a class="pill" href="{{ url_for('admin.refresh') }}"><i class="icon icon-exchange"></i> {% trans %}Rescan songs{% endtrans %}</a>
+        <a id="update-ytdl-link" class="pill" href="{{ url_for('admin.update_ytdl') }}"><i class="icon icon-down-big"></i> {% trans %}Update yt-dlp{% endtrans %}</a>
       </div>
 
       <div style="display:flex; flex-wrap:wrap; gap:8px">
@@ -221,7 +221,7 @@
 
       {% if admin_password != none %}
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
-      <a class="pill" href="{{ url_for('admin.logout') }}"><i class="icon icon-logout"></i> {% trans %}Log out{% endtrans %}</a>
+      <a class="pill" href="{{ url_for('admin.logout') }}"><i class="icon icon-cancel-circled-1"></i> {% trans %}Log out{% endtrans %}</a>
       {% endif %}
     </div>
   </div>

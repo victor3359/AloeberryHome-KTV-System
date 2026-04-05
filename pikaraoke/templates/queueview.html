@@ -184,7 +184,7 @@
       });
     } else if (!np || !np.now_playing) {
       html += '<div class="queue-empty">';
-      html += '<i class="icon icon-music-1" style="font-size:3rem; opacity:0.3"></i>';
+      html += '<i class="icon icon-music" style="font-size:3rem; opacity:0.3"></i>';
       html += '<p>{% trans %}The queue is empty{% endtrans %}</p>';
       html += '<a href="{{ url_for("songpicker.songpicker") }}" class="pill active" style="margin-top:12px">{% trans %}Go pick songs{% endtrans %}</a>';
       html += '</div>';
@@ -399,12 +399,12 @@
     </div>
     {% if is_transpose_enabled %}
     <div class="control-panel__slider-group">
-      <label><i class="icon-music-1"></i> {% trans %}Key{% endtrans %} <span id="cp-transpose-label">0 semitones</span></label>
+      <label><i class="icon-music"></i> {% trans %}Key{% endtrans %} <span id="cp-transpose-label">0 semitones</span></label>
       <input id="cp-transpose" type="range" min="-12" max="12" value="0" class="control-panel__slider">
     </div>
     {% endif %}
     <div class="control-panel__slider-group" id="cp-audio-mode-group" style="display:none">
-      <label><i class="icon-headphones"></i> {% trans %}Audio{% endtrans %}</label>
+      <label><i class="icon-volume-up"></i> {% trans %}Audio{% endtrans %}</label>
       <div class="audio-mode-toggle">
         <button class="audio-mode-btn active" data-mode="original">{% trans %}Original{% endtrans %}</button>
         <button class="audio-mode-btn" data-mode="instrumental">{% trans %}Karaoke{% endtrans %}</button>
@@ -417,7 +417,7 @@
 <!-- Fair queue banner -->
 {% if fair_queue_enabled or limit_user_songs_by > 0 %}
 <div class="fair-queue-banner glass" style="margin-top: 68px">
-  <i class="icon icon-shuffle"></i>
+  <i class="icon icon-exchange"></i>
   {% if fair_queue_enabled %}<b>{% trans %}Fair Queue{% endtrans %}</b>{% endif %}
   {% if limit_user_songs_by > 0 %} &middot; {% trans %}Max{% endtrans %} <b>{{ limit_user_songs_by }}</b> {% trans %}per person{% endtrans %}{% endif %}
   <span id="fair-queue-counts" style="margin-left: 8px"></span>

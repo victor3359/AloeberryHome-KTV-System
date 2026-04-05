@@ -210,7 +210,7 @@ $(function () {
       },
       error: function () {
         btn.removeClass("is-loading").removeAttr("disabled")
-          .html('<i class="icon icon-download"></i>');
+          .html('<i class="icon icon-down-big"></i>');
         showNotification("Download failed", "is-danger");
       }
     });
@@ -368,7 +368,7 @@ $(function () {
   {# -- YouTube results -- #}
   {% if search_results %}
   <div class="sp-section-header">
-    <i class="icon icon-video"></i> YouTube
+    <i class="icon icon-play"></i> YouTube
     <span class="sp-tag">{% trans %}Download required{% endtrans %}</span>
   </div>
   <div class="sp-song-list">
@@ -380,7 +380,7 @@ $(function () {
         <div class="sp-song-row__sub">{{ duration }}{% if channel %} &middot; {{ channel }}{% endif %}</div>
       </div>
       <button class="sp-song-row__btn sp-song-row__btn--download yt-download-btn" data-url="{{ url }}" data-title="{{ title }}">
-        <i class="icon icon-download"></i>
+        <i class="icon icon-down-big"></i>
       </button>
     </div>
     {% endfor %}
@@ -393,7 +393,7 @@ $(function () {
   {# -- Pill filter bar -- #}
   <div class="sp-pill-bar">
     <a class="sp-pill {% if not lang and not artist_filter and not filter_mode %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}">
-      <i class="icon icon-th-large"></i> {% trans %}All{% endtrans %}
+      <i class="icon icon-list-alt"></i> {% trans %}All{% endtrans %}
     </a>
     <a class="sp-pill {% if lang == 'chinese' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?lang=chinese">
       {% trans %}Chinese{% endtrans %}
@@ -409,13 +409,13 @@ $(function () {
     </a>
     <span class="sp-pill-divider"></span>
     <a class="sp-pill {% if sort_order == 'Alphabetical' and not filter_mode %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}{% if lang %}?lang={{ lang }}{% endif %}">
-      <i class="icon icon-sort-name-up"></i> A-Z
+      <i class="icon icon-sort-up"></i> A-Z
     </a>
     <a class="sp-pill {% if sort_order == 'Date' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?sort=date{% if lang %}&lang={{ lang }}{% endif %}">
-      <i class="icon icon-clock"></i> {% trans %}Newest{% endtrans %}
+      <i class="icon icon-sort-down"></i> {% trans %}Newest{% endtrans %}
     </a>
     <a class="sp-pill {% if filter_mode == 'recent' %}sp-pill--active{% endif %}" href="{{ url_for('songpicker.songpicker') }}?filter=recent">
-      <i class="icon icon-star"></i> {% trans %}New{% endtrans %}
+      <i class="icon icon-plus-circled"></i> {% trans %}New{% endtrans %}
     </a>
   </div>
 
@@ -434,10 +434,10 @@ $(function () {
   {# -- Active filter indicator -- #}
   {% if letter or artist_filter %}
   <div class="sp-filter-indicator">
-    {% if letter %}<span><i class="icon icon-filter"></i> "{{ letter.upper() }}"</span>{% endif %}
+    {% if letter %}<span><i class="icon icon-search-1"></i> "{{ letter.upper() }}"</span>{% endif %}
     {% if artist_filter %}<span><i class="icon icon-mic-1"></i> {{ artist_filter }}</span>{% endif %}
     <a href="{{ url_for('songpicker.songpicker') }}{% if lang %}?lang={{ lang }}{% endif %}" class="sp-filter-clear">
-      <i class="icon icon-cancel"></i> {% trans %}Clear{% endtrans %}
+      <i class="icon icon-cancel-circled-1"></i> {% trans %}Clear{% endtrans %}
     </a>
   </div>
   {% endif %}
