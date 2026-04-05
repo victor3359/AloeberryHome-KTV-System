@@ -680,27 +680,25 @@ class VocalSeparator:
             import tempfile
 
             output_file = tempfile.mktemp(suffix=".json")
-            script = (
-                "import sys, json, warnings, os\n"
-                "os.environ['OMP_NUM_THREADS'] = '10'\n"
-                "os.environ['MKL_NUM_THREADS'] = '10'\n"
-                "warnings.filterwarnings('ignore')\n"
-                "import torch; torch.set_num_threads(10)\n"
-                "import whisper\n"
-                f"import torch; _dev = 'cuda' if torch.cuda.is_available() else 'cpu'\n"
-                f"model = whisper.load_model('{self._whisper_model}', device=_dev)\n"
-                f"result = model.transcribe(r'{audio_source}', word_timestamps=True, "
-                f"verbose=False, condition_on_previous_text=False"
-                + (f", language='{detected_lang}'" if detected_lang else "")
-                + ")\n"
-                "segments = []\n"
-                "for seg in result.get('segments', []):\n"
-                "    segments.append({'start': seg['start'], 'end': seg['end'], "
-                "'text': seg['text'], 'words': seg.get('words', [])})\n"
-                f"with open(r'{output_file}', 'w', encoding='utf-8') as f:\n"
-                "    json.dump({'segments': segments, 'language': result.get('language', '')}, f, "
-                "ensure_ascii=False)\n"
-            )
+            # Build Whisper subprocess script as a proper Python file
+            lang_arg = f", language='{detected_lang}'" if detected_lang else ""
+            script_lines = [
+                "import sys, json, warnings, os",
+                "warnings.filterwarnings('ignore')",
+                "os.environ['OMP_NUM_THREADS'] = '10'",
+                "import torch",
+                "torch.set_num_threads(10)",
+                "import whisper",
+                "dev = 'cuda' if torch.cuda.is_available() else 'cpu'",
+                f"model = whisper.load_model('{self._whisper_model}', device=dev)",
+                f"r = model.transcribe(sys.argv[1], word_timestamps=True, verbose=False, "
+                f"condition_on_previous_text=False{lang_arg})",
+                "segs = [{'start':s['start'],'end':s['end'],'text':s['text'],"
+                "'words':s.get('words',[])} for s in r.get('segments',[])]",
+                f"json.dump({{'segments':segs,'language':r.get('language','')}},"
+                f"open(sys.argv[2],'w',encoding='utf-8'),ensure_ascii=False)",
+            ]
+            script = "\n".join(script_lines)
 
             if detected_lang:
                 logging.info("Language hint from filename: %s", detected_lang)
@@ -713,7 +711,7 @@ class VocalSeparator:
             }
             creationflags = 0x00004000 if sys.platform == "win32" else 0
             proc = subprocess.run(
-                [sys.executable, "-c", script],
+                [sys.executable, "-c", script, audio_source, output_file],
                 capture_output=True,
                 text=True,
                 timeout=600,

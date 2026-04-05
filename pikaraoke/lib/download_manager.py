@@ -332,13 +332,18 @@ class DownloadManager:
             # Auto-normalize song name: "YouTubeTitle" → "Artist - Song"
             if song_is_valid and song_path:
                 try:
-                    from pikaraoke.lib.metadata_parser import get_song_correct_name
+                    from pikaraoke.lib.metadata_parser import regex_tidy
 
                     display_name = self._song_manager.filename_from_path(song_path)
-                    corrected = get_song_correct_name(display_name, os.path.basename(song_path))
-                    if corrected and corrected != display_name:
+                    corrected = regex_tidy(display_name)
+                    # Only rename if result has "Artist - Song" format and isn't worse
+                    if (
+                        corrected
+                        and corrected != display_name
+                        and " - " in corrected
+                        and len(corrected) > 3
+                    ):
                         self._song_manager.rename(song_path, corrected)
-                        # Update song_path to the new path
                         ext = os.path.splitext(song_path)[1]
                         song_path = os.path.join(self._download_path, corrected + ext)
                         logging.info("Auto-renamed: %s → %s", display_name, corrected)
