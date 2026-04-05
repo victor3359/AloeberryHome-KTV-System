@@ -668,6 +668,13 @@ const setupSocketEvents = () => {
   socket.on('connect', () => {
     console.log('Socket connected');
     socket.emit("register_splash");
+    // Re-fetch now_playing state after reconnection
+    $.get('/now_playing', function(data) {
+      var np = JSON.parse(data);
+      if (np && np.now_playing) {
+        handleNowPlayingUpdate(np);
+      }
+    });
   });
   socket.on('splash_role', (role) => {
     isMaster = (role === "master");

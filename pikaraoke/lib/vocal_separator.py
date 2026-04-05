@@ -691,6 +691,7 @@ class VocalSeparator:
             transcribe_kwargs: dict[str, object] = {
                 "word_timestamps": True,
                 "verbose": False,
+                "condition_on_previous_text": False,
             }
             if detected_lang:
                 transcribe_kwargs["language"] = detected_lang

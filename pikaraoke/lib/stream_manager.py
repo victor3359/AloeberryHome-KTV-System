@@ -431,6 +431,29 @@ class StreamManager:
             output = self.ffmpeg_log.get_nowait()
             logging.debug("[FFMPEG] " + output.decode("utf-8", "ignore").strip())
 
+    def _cleanup_old_segments(self) -> None:
+        """Remove old HLS segments from temp directory to prevent disk growth."""
+        try:
+            tmp_dir = get_tmp_dir()
+        except Exception:
+            return
+        if not os.path.isdir(tmp_dir):
+            return
+        try:
+            removed = 0
+            for f in os.listdir(tmp_dir):
+                fp = os.path.join(tmp_dir, f)
+                if os.path.isfile(fp) and f.endswith((".m4s", ".m3u8", ".mp4", ".ts")):
+                    try:
+                        os.remove(fp)
+                        removed += 1
+                    except OSError:
+                        pass
+            if removed > 0:
+                logging.debug("Cleaned up %d old stream files", removed)
+        except OSError:
+            pass
+
     def kill_ffmpeg(self) -> None:
         """Terminate the running FFmpeg process gracefully.
 
@@ -452,3 +475,5 @@ class StreamManager:
                 logging.debug(f"FFmpeg termination exception: {e}")
             finally:
                 self.ffmpeg_process = None
+                # Clean up old segments from temp directory
+                self._cleanup_old_segments()
