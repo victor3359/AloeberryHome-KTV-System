@@ -8,7 +8,7 @@
 
     // Configuration
     const config = {
-        contentSelector: '.box',
+        contentSelector: '.page-content',
         linkSelector: 'a[href]', // Intercept all links, not just navbar
         notificationSelector: '#notification-alt',
         scrollBehavior: 'smooth'
@@ -417,20 +417,16 @@
         // Extract base path without query parameters
         const path = url.split('?')[0];
 
-        // Remove all active classes
-        $('.navbar-item').removeClass('is-active');
+        // Remove all active classes from tab bar
+        $('.tab-bar__item').removeClass('is-active');
 
-        // Add active class to matching navbar item
-        if (path === '/') {
-            $('#home').addClass('is-active');
-        } else if (path === '/queue') {
-            $('#queue').addClass('is-active');
-        } else if (path === '/search') {
-            $('#search').addClass('is-active');
-        } else if (path === '/browse' || path.startsWith('/browse')) {
-            $('#browse').addClass('is-active');
+        // Add active class to matching tab
+        if (path === '/songpicker' || path === '/browse' || path === '/search') {
+            $('#tab-songpicker').addClass('is-active');
+        } else if (path === '/queue' || path === '/') {
+            $('#tab-queue').addClass('is-active');
         } else if (path === '/info') {
-            $('#info').addClass('is-active');
+            $('#tab-more').addClass('is-active');
         }
     }
 

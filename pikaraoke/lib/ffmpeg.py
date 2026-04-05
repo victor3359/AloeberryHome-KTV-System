@@ -39,6 +39,7 @@ def build_ffmpeg_cmd(
     buffer_fully_before_playback: bool = False,
     avsync: float = 0,
     cdg_pixel_scaling: bool = False,
+    audio_mode: str = "original",
 ) -> Any:
     """Build an ffmpeg command for transcoding media.
 
@@ -83,16 +84,36 @@ def build_ffmpeg_cmd(
     else:
         vbitrate = "5M"
 
+    # Audio mode: select audio source based on mode
+    using_stems = audio_mode != "original" and hasattr(fr, "instrumental_path")
+    needs_reencode = is_cdg or is_transposed or normalize_audio or avsync != 0 or using_stems
+
     # Copy audio if no processing needed, otherwise re-encode with AAC
-    # CDG always re-encodes audio for compatibility
-    acodec = "aac" if is_cdg or is_transposed or normalize_audio or avsync != 0 else "copy"
+    acodec = "aac" if needs_reencode else "copy"
 
     # For container formats with VFR or timestamp issues, use genpts
     if fr.file_extension in [".webm", ".avi", ".mov", ".mkv"]:
         input = ffmpeg.input(fr.file_path, **{"fflags": "+genpts"})
     else:
         input = ffmpeg.input(fr.file_path)
-    audio = input.audio
+
+    # Select audio source based on mode
+    if audio_mode == "instrumental" and getattr(fr, "instrumental_path", None):
+        instrumental_input = ffmpeg.input(fr.instrumental_path)
+        audio = instrumental_input.audio
+    elif (
+        audio_mode == "guide"
+        and getattr(fr, "vocals_path", None)
+        and getattr(fr, "instrumental_path", None)
+    ):
+        instrumental_input = ffmpeg.input(fr.instrumental_path)
+        vocals_input = ffmpeg.input(fr.vocals_path)
+        vocals_quiet = vocals_input.audio.filter("volume", 0.3)
+        audio = ffmpeg.filter(
+            [instrumental_input.audio, vocals_quiet], "amix", inputs=2, duration="longest"
+        )
+    else:
+        audio = input.audio
 
     # Audio sync adjustment: delay or trim
     if avsync > 0:

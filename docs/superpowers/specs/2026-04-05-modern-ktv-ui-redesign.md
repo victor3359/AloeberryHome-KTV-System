@@ -38,6 +38,7 @@ PiKaraoke's current UI uses Bulma's default dark theme with a top navbar and tab
 ```
 
 Tabs:
+
 1. **Dian Ge** (Search + Browse merged) -- music note icon
 2. **Pai Dui** (Queue + Now Playing merged) -- list icon
 3. **Geng Duo** (Info + Rankings + History) -- grid/more icon
@@ -68,18 +69,21 @@ Merges current `/search` and `/browse` into a unified song discovery experience.
 Displayed when the search input is empty.
 
 **Pill Filter Bar** (horizontal scroll):
+
 - Pills: Quan Bu / Zhong Wen / Ri Wen / Han Wen / Ying Wen / Re Men / Zui Ai / Zui Jin
 - Active pill: accent gradient background
 - Inactive pill: `--bg-surface` background
 - Sticky below search bar
 
 **Artist Quick-Access Row** (horizontal scroll):
+
 - Circular avatars (48px) with artist name below
 - Generated from `_extract_artist()` data, sorted by song count
 - Tap to filter songs by that artist
 - Only shown when "Quan Bu" or language filter is active (not on Re Men/Zui Ai/Zui Jin)
 
 **Song Grid** (card layout):
+
 - 2 columns on mobile, 3-4 on desktop
 - Each card: glassmorphism surface, border-radius 12px, padding 12px
   - Song title (1 line, ellipsis overflow)
@@ -90,6 +94,7 @@ Displayed when the search input is empty.
 - Card tap: shows song detail bottom sheet (full title, artist, play count, queue/favorite actions)
 
 **Alphabetical Side Index**:
+
 - Right edge, vertical strip of small dots/letters
 - Touch-drag to jump through alphabet
 - Only visible in alphabetical sort mode
@@ -99,6 +104,7 @@ Displayed when the search input is empty.
 Displayed when user types in the search input.
 
 **Local Library Results** (top section):
+
 - List layout: each row height 56px minimum
 - Left: song title + artist subtitle
 - Right: "+" queue button (44x44px)
@@ -106,6 +112,7 @@ Displayed when user types in the search input.
 - Section header: "Ben Di Ge Ku" with result count
 
 **YouTube Results** (bottom section):
+
 - List layout with thumbnail (60x34px, 16:9 aspect)
 - Song title + duration badge + "YouTube" source tag
 - Download/queue button
@@ -158,13 +165,16 @@ Card-based entry points replacing current `/info` page.
 Vertical stack of glassmorphism cards:
 
 1. **Pai Hang** (Rankings) card -- tap to expand
+
    - Re Men Ge Qu (Hot Songs by play count)
    - Ji Fen Bang (Leaderboard)
 
 2. **Li Shi** (History) card -- tap to expand
+
    - Ben Chang Ji Lu (This session play history)
 
 3. **She Ding** (Settings) card -- tap to expand
+
    - Volume / BG music volume
    - Display options (clock, overlay, screensaver)
    - Queue options (fair queue, song limit)
@@ -172,6 +182,7 @@ Vertical stack of glassmorphism cards:
    - Language selection
 
 4. **Guan Li** (Admin) card -- only shown for admin users
+
    - Shua Xin Ge Ku / Geng Xin yt-dlp / Kai Xin Chang (Session Reset)
    - Tui Chu / Guan Ji / Chong Qi
    - Deng Ru / Deng Chu
@@ -202,7 +213,7 @@ These rules apply globally across all tabs:
 
 | Breakpoint | Behavior |
 |------------|----------|
-| < 768px (mobile) | Bottom tab bar, 2-col grid, full-width search |
+| \< 768px (mobile) | Bottom tab bar, 2-col grid, full-width search |
 | >= 768px (tablet) | Bottom tab bar, 3-col grid |
 | >= 1024px (desktop) | Top navbar, 4-col grid, wider layout (max 1100px) |
 
@@ -223,12 +234,14 @@ Fallback for browsers without `backdrop-filter`: solid `#1a1a2e` background.
 ## Files to Modify
 
 ### CSS (new/replace)
+
 - **New**: `pikaraoke/static/modern-theme.css` -- complete theme with CSS custom properties, glassmorphism, tab bar, cards, grid, animations
 - **Keep**: `pikaraoke/static/bulma.min.css` (grid/responsive utilities only)
 - **Remove from imports**: `bulma-dark.css` (replaced by modern-theme.css)
 - **Update**: `pikaraoke/static/custom.css` -- remove conflicting styles, keep non-visual utilities
 
 ### Templates
+
 - **Modify**: `pikaraoke/templates/base.html` -- bottom tab bar, new CSS imports, restructured layout container
 - **Merge into one**: `search.html` + `files.html` content merges into new `pikaraoke/templates/songpicker.html`
 - **Merge into one**: `home.html` + `queue.html` content merges into new `pikaraoke/templates/queueview.html`
@@ -236,13 +249,16 @@ Fallback for browsers without `backdrop-filter`: solid `#1a1a2e` background.
 - **Keep unchanged**: `splash.html`, `login.html`, `edit.html`, `batch-song-renamer.html`
 
 ### Routes
+
 - **New**: `pikaraoke/routes/songpicker.py` -- serves merged search+browse page at `/songpicker`
 - **Modify**: `pikaraoke/routes/queue.py` -- serve merged queue+now-playing page
 - **Modify**: `pikaraoke/routes/info.py` -- serve restructured more/settings page
 - **Modify**: `pikaraoke/routes/home.py` -- redirect `/` to `/queue`
 
 ### Backward-Compatible Redirects
+
 Old routes redirect to new locations so bookmarks and external links keep working:
+
 - `/` -> `/queue` (default landing is now the queue/now-playing view)
 - `/search` -> `/songpicker`
 - `/browse` -> `/songpicker`
@@ -250,6 +266,7 @@ Old routes redirect to new locations so bookmarks and external links keep workin
 - `/info` stays at `/info`
 
 ### JavaScript
+
 - **Modify**: `pikaraoke/static/spa-navigation.js` -- update for 3-tab navigation, swipe gestures
 - **No changes**: `splash.js`, `score.js`, `screensaver.js`, `fireworks.js` (splash screen is separate)
 

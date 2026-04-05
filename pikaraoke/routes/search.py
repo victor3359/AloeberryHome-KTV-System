@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import flask_babel
-from flask import current_app, jsonify, render_template, request, url_for
+from flask import current_app, jsonify, redirect, render_template, request, url_for
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
@@ -40,7 +40,14 @@ class DownloadBody(Schema):
 
 @search_bp.route("/search", methods=["GET"])
 def search():
-    """YouTube search page."""
+    """YouTube search page — redirects to songpicker."""
+    args = request.args.to_dict()
+    return redirect(url_for("songpicker.songpicker", **args))
+
+
+@search_bp.route("/search_legacy", methods=["GET"])
+def search_legacy():
+    """Legacy search page (kept for backwards compat)."""
     k = get_karaoke_instance()
     site_name = get_site_name()
     search_string = request.args.get("search_string")

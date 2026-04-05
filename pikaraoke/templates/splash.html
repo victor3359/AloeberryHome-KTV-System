@@ -7,6 +7,10 @@
   rel="stylesheet"
   href="{{  url_for('static', filename='score.css') }}"
 />
+<link
+  rel="stylesheet"
+  href="{{  url_for('static', filename='themes.css') }}"
+/>
 <script src="{{ url_for('static', filename='js/subtitles-octopus.js') }}"></script>
 <script>
   // Use this config object to pass data from the jinja2 template to the splash.js code
@@ -116,6 +120,40 @@
   </div>
 </div>
 
+<div id="session-summary-screen" style="display: none">
+  <div id="session-summary-content">
+    <div id="summary-title">Session Summary</div>
+    <div id="summary-stats">
+      <div class="summary-stat">
+        <div class="summary-value" id="summary-songs">0</div>
+        <div class="summary-label">Songs</div>
+      </div>
+      <div class="summary-stat">
+        <div class="summary-value" id="summary-duration">0:00</div>
+        <div class="summary-label">Duration</div>
+      </div>
+      <div class="summary-stat">
+        <div class="summary-value" id="summary-singers">0</div>
+        <div class="summary-label">Singers</div>
+      </div>
+    </div>
+    <div id="summary-highlights">
+      <div class="summary-highlight" id="summary-mvp-row" style="display:none">
+        <span class="summary-icon">&#127911;</span>
+        <span>Most Active: <b id="summary-mvp"></b></span>
+      </div>
+      <div class="summary-highlight" id="summary-top-scorer-row" style="display:none">
+        <span class="summary-icon">&#127942;</span>
+        <span>Top Scorer: <b id="summary-top-scorer"></b></span>
+      </div>
+      <div class="summary-highlight" id="summary-hit-row" style="display:none">
+        <span class="summary-icon">&#127925;</span>
+        <span>Most Played: <b id="summary-hit-song"></b></span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="transition-screen" style="display: none">
   <div id="transition-content">
     <div id="transition-label">Up Next</div>
@@ -124,6 +162,7 @@
       <span id="transition-singer-name"></span>
     </div>
     <div id="transition-song-name"></div>
+    <div id="transition-countdown" style="margin-top:1.5rem; font-size:1.2rem; color:#94a3b8; opacity:0.8"></div>
   </div>
 </div>
 
@@ -374,6 +413,37 @@
     padding: 5px 10px;
     max-width: 450px;
   }
+  #session-summary-screen {
+    position: absolute;
+    z-index: 5;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #session-summary-content { text-align: center; min-width: 420px; }
+  #summary-title {
+    font-size: 2.2rem;
+    background: linear-gradient(135deg, #7c3aed, #06b6d4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+  }
+  #summary-stats {
+    display: flex; justify-content: center; gap: 3rem; margin-bottom: 2rem;
+  }
+  .summary-stat { text-align: center; }
+  .summary-value { font-size: 3rem; color: #f1f5f9; font-weight: bold; }
+  .summary-label { font-size: 1rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; }
+  .summary-highlight {
+    font-size: 1.4rem; color: #f1f5f9; margin: 0.8rem 0;
+  }
+  .summary-icon { margin-right: 0.5rem; }
+
   #leaderboard-screen {
     position: absolute;
     z-index: 5;

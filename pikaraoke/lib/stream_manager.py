@@ -73,7 +73,9 @@ class StreamManager:
         self.ffmpeg_process = None
         self.ffmpeg_log: Queue | None = None
 
-    def play_file(self, file_path: str, semitones: int = 0) -> PlaybackResult:
+    def play_file(
+        self, file_path: str, semitones: int = 0, audio_mode: str = "original"
+    ) -> PlaybackResult:
         """Start playback of a media file.
 
         Handles file resolution, transcoding, and stream setup.
@@ -102,6 +104,7 @@ class StreamManager:
             or is_transcoding_required(file_path)
             or avsync != 0
             or is_hls
+            or audio_mode != "original"
         )
 
         logging.debug(f"Requires transcoding: {requires_transcoding}")
@@ -127,7 +130,7 @@ class StreamManager:
             is_buffering_complete = True
         else:
             is_transcoding_complete, is_buffering_complete = self._transcode_file(
-                fr, semitones, is_hls
+                fr, semitones, is_hls, audio_mode
             )
 
         subtitle_url = None
@@ -169,7 +172,9 @@ class StreamManager:
         logging.debug(f"Copying file failed: {dest_path}")
         return False
 
-    def _transcode_file(self, fr: FileResolver, semitones: int, is_hls: bool) -> tuple[bool, bool]:
+    def _transcode_file(
+        self, fr: FileResolver, semitones: int, is_hls: bool, audio_mode: str = "original"
+    ) -> tuple[bool, bool]:
         """Transcode a file using FFmpeg.
 
         Args:
@@ -198,6 +203,7 @@ class StreamManager:
             complete_transcode_before_play,
             avsync,
             cdg_pixel_scaling,
+            audio_mode,
         )
         self.ffmpeg_process = ffmpeg_cmd.run_async(pipe_stderr=True, pipe_stdin=True)
 

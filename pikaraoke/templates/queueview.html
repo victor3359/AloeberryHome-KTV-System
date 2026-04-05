@@ -1,0 +1,468 @@
+{% extends 'base.html' %} {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script>
+  var isAdmin = JSON.parse('{{ admin | tojson }}');
+
+  function escape(str) { return encodeURIComponent(str); }
+
+  if (typeof window.socket === 'undefined') { window.socket = io(); }
+  if (typeof window.queuePageState === 'undefined') {
+    window.queuePageState = { queue: [], previousQueue: null, nowPlaying: null, previousNowPlaying: null };
+  }
+
+  // --- Mini Player ---
+  function updateMiniPlayer(np) {
+    if (!np || !np.now_playing) {
+      $(".mini-player").addClass("is-hidden");
+      return;
+    }
+    $(".mini-player").removeClass("is-hidden");
+    var singerDisplay = np.now_playing_user2
+      ? np.now_playing_user + ' & ' + np.now_playing_user2
+      : np.now_playing_user;
+    $(".mini-player__title").text(np.now_playing);
+    $(".mini-player__singer").text(singerDisplay);
+
+    // Audio mode indicator
+    if (np.has_stems && np.now_playing_audio_mode !== "original") {
+      var modeLabel = np.now_playing_audio_mode === "guide" ? "Guide" : "Karaoke";
+      $(".mini-player__mode").text(modeLabel).show();
+    } else {
+      $(".mini-player__mode").hide();
+    }
+
+    if (np.is_paused) {
+      $("#mini-pause-btn i").removeClass("icon-pause").addClass("icon-play");
+    } else {
+      $("#mini-pause-btn i").removeClass("icon-play").addClass("icon-pause");
+    }
+
+    // Progress bar
+    if (np.now_playing_duration > 0) {
+      var pct = (np.now_playing_position / np.now_playing_duration) * 100;
+      $(".mini-player__progress-fill").css("width", pct + "%");
+    }
+  }
+
+  // --- Expanded Control Panel ---
+  window.toggleControlPanel = function() {
+    var $panel = $(".control-panel");
+    if ($panel.hasClass("is-open")) {
+      $panel.removeClass("is-open");
+    } else {
+      var np = window.queuePageState.nowPlaying;
+      if (np && np.now_playing) {
+        var singerDisplay = np.now_playing_user2
+          ? np.now_playing_user + ' & ' + np.now_playing_user2
+          : np.now_playing_user;
+        $(".control-panel__song").text(np.now_playing);
+        $(".control-panel__singer").text(singerDisplay);
+        $("#cp-volume").val(np.volume * 100);
+        if (np.now_playing_transpose !== undefined) {
+          $("#cp-transpose").val(np.now_playing_transpose);
+          $("#cp-transpose-label").text(getSemitonesLabel(np.now_playing_transpose));
+        }
+        // Show audio mode toggle if stems available
+        if (np.has_stems) {
+          $("#cp-audio-mode-group").show();
+          $(".audio-mode-btn").removeClass("active");
+          $(".audio-mode-btn[data-mode='" + (np.now_playing_audio_mode || "original") + "']").addClass("active");
+        } else {
+          $("#cp-audio-mode-group").hide();
+        }
+      }
+      $panel.addClass("is-open");
+    }
+  };
+
+  // --- Queue Functions ---
+  window.queuePage_getQueue = function() {
+    if ($('#queue-list').length === 0) return;
+    $.when(
+      $.get('{{ url_for("queue.get_queue") }}'),
+      $.get('{{ url_for("now_playing.now_playing") }}')
+    ).done(function(queueResp, nowPlayingResp) {
+      var newQueue = JSON.parse(queueResp[0]);
+      var newNowPlaying = nowPlayingResp[0] ? JSON.parse(nowPlayingResp[0]) : null;
+      var queueChanged = !isEqual(newQueue, window.queuePageState.previousQueue);
+      var npChanged = !isEqual(newNowPlaying, window.queuePageState.previousNowPlaying);
+      if (queueChanged || npChanged) {
+        window.queuePageState.queue = newQueue;
+        window.queuePageState.nowPlaying = newNowPlaying;
+
+        updateMiniPlayer(newNowPlaying);
+
+        var table = document.getElementById('queue-list');
+        if (table && table.sortableInstance) {
+          table.sortableInstance.destroy();
+          table.sortableInstance = null;
+        }
+        $("#queue-list").html(generateQueueHTML());
+        window.queuePageState.previousQueue = newQueue;
+        window.queuePageState.previousNowPlaying = newNowPlaying;
+        window.initSortable();
+
+        if (window.highlightAfterRefresh) {
+          var fileToHighlight = window.highlightAfterRefresh;
+          window.highlightAfterRefresh = null;
+          $('.queue-song-options-btn').each(function() {
+            if (decodeURIComponent($(this).data('file')) === fileToHighlight) {
+              $(this).closest('.queue-item').addClass('row-moved');
+            }
+          });
+        }
+      }
+    });
+  };
+
+  window.initSortable = function() {
+    var list = document.getElementById('queue-list');
+    if (!list || $(".queue-item__drag").length === 0) return;
+    list.sortableInstance = Sortable.create(list, {
+      handle: '.queue-item__drag',
+      animation: 150,
+      filter: '.queue-item--now-playing',
+      chosenClass: 'drag-chosen',
+      delay: 100,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 5,
+      onMove: function(evt) {
+        return evt.related.className.indexOf('queue-item--now-playing') === -1;
+      },
+      onEnd: function(evt) {
+        if (evt.oldIndex === evt.newIndex) return;
+        var np = window.queuePageState.nowPlaying;
+        var offset = (np && np.now_playing) ? 1 : 0;
+        var oldQueueIndex = evt.oldIndex - offset;
+        var newQueueIndex = evt.newIndex - offset;
+        var movedFile = $(evt.item).find('.queue-song-options-btn').data('file');
+        if (movedFile) window.highlightAfterRefresh = decodeURIComponent(movedFile);
+        $('#queue-list .queue-item:not(.queue-item--now-playing)').each(function(i) {
+          $(this).find('.queue-item__index').text(i + 1);
+        });
+        $.post("{{ url_for('queue.reorder') }}", {
+          old_index: oldQueueIndex, new_index: newQueueIndex
+        }).done(function() {
+          window.queuePageState.previousQueue = null;
+          window.queuePage_getQueue();
+        });
+      }
+    });
+  };
+
+  function generateQueueHTML() {
+    updateFairQueueCounts();
+    var html = "";
+    var queue = window.queuePageState.queue;
+    var np = window.queuePageState.nowPlaying;
+
+    if (np && np.now_playing) {
+      var iconSrc = np.is_paused
+        ? '{{ url_for("static", filename="images/now-playing.png") }}'
+        : '{{ url_for("static", filename="images/now-playing.gif") }}';
+      html += '<div class="queue-item queue-item--now-playing glass">';
+      html += '<div class="queue-item__index"><img src="' + iconSrc + '" alt="Playing" style="width:28px"></div>';
+      if (isAdmin) html += '<div class="queue-item__drag"></div>';
+      html += '<div class="queue-item__info"><span class="queue-item__user">' + np.now_playing_user + '</span>';
+      html += '<span class="queue-item__title">' + np.now_playing + '</span></div>';
+      if (isAdmin) html += '<a class="queue-item__action now-playing-options-btn"><i class="icon-cog"></i></a>';
+      html += '</div>';
+    }
+
+    if (queue.length > 0) {
+      queue.forEach(function(e, index) {
+        html += '<div class="queue-item" data-index="' + index + '">';
+        html += '<div class="queue-item__index">' + (index + 1) + '</div>';
+        if (isAdmin) html += '<div class="queue-item__drag"><i class="icon icon-braille"></i></div>';
+        html += '<div class="queue-item__info"><span class="queue-item__user">' + e.user + '</span>';
+        html += '<span class="queue-item__title">' + e.title + '</span></div>';
+        if (isAdmin) {
+          html += '<a class="queue-item__action queue-song-options-btn" data-index="' + index + '" data-file="' + escape(e.file) + '" data-title="' + escape(e.title) + '"><i class="icon-cog"></i></a>';
+        }
+        html += '</div>';
+      });
+    } else if (!np || !np.now_playing) {
+      html += '<div class="queue-empty">';
+      html += '<i class="icon icon-music-1" style="font-size:3rem; opacity:0.3"></i>';
+      html += '<p>{% trans %}The queue is empty{% endtrans %}</p>';
+      html += '<a href="{{ url_for("songpicker.songpicker") }}" class="pill active" style="margin-top:12px">{% trans %}Go pick songs{% endtrans %}</a>';
+      html += '</div>';
+    }
+    return html;
+  }
+
+  function updateFairQueueCounts() {
+    var countsEl = document.getElementById("fair-queue-counts");
+    if (!countsEl) return;
+    var queue = window.queuePageState.queue;
+    var counts = {};
+    queue.forEach(function(item) { counts[item.user] = (counts[item.user] || 0) + 1; });
+    var parts = Object.keys(counts).map(function(u) {
+      return '<b>' + $('<span>').text(u).html() + '</b>: ' + counts[u];
+    });
+    countsEl.innerHTML = parts.length ? parts.join(' &middot; ') : '';
+  }
+
+  // Song options modal
+  window.currentSongOptions = { index: -1, file: '', title: '' };
+  window.highlightAfterRefresh = null;
+
+  window.executeQueueAction = function(action) {
+    var file = window.currentSongOptions.file;
+    var url = "/queue/edit?song=" + encodeURIComponent(file) + "&action=" + action;
+    if (action !== 'delete') window.highlightAfterRefresh = file;
+    $.ajax({ url: url, method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .done(function(response) {
+        var result = JSON.parse(response);
+        if (!result.success && result.error) console.error('Queue action failed:', result.error);
+      }).fail(function() { window.highlightAfterRefresh = null; });
+    window.closeSongOptions();
+  };
+
+  window.openSongOptions = function(index, file, title) {
+    window.currentSongOptions = { index: index, file: file, title: title };
+    $('#modal-song-title').text(title);
+    $('#opt-up, #opt-top, #opt-down, #opt-bottom').show();
+    if (index === 0) { $('#opt-up, #opt-top').hide(); }
+    if (index >= window.queuePageState.queue.length - 1) { $('#opt-down, #opt-bottom').hide(); }
+    $('#song-options-modal').addClass('is-active');
+  };
+  window.closeSongOptions = function() { $('#song-options-modal').removeClass('is-active'); };
+
+  window.openNowPlayingOptions = function() {
+    var np = window.queuePageState.nowPlaying;
+    if (!np || !np.now_playing) return;
+    $('#np-modal-song-title').text(np.now_playing);
+    if (np.is_paused) {
+      $('#np-pause-btn').html('<span class="icon mr-2"><i class="icon-play"></i></span>{% trans %}Play{% endtrans %}');
+    } else {
+      $('#np-pause-btn').html('<span class="icon mr-2"><i class="icon-pause"></i></span>{% trans %}Pause{% endtrans %}');
+    }
+    $('#now-playing-options-modal').addClass('is-active');
+  };
+  window.closeNowPlayingOptions = function() { $('#now-playing-options-modal').removeClass('is-active'); };
+
+  window.executePlaybackAction = function(action) {
+    $.get('/' + action);
+    window.closeNowPlayingOptions();
+  };
+
+  // Download polling
+  window.queuePage_getDownloads = function() {
+    if (window.downloadPollTimer) clearTimeout(window.downloadPollTimer);
+    if ($('#downloads-section').length === 0) return;
+    $.get('{{ url_for("queue.get_current_downloads") }}', function(data) {
+      var status = JSON.parse(data);
+      var html = "";
+      if (status.active) {
+        var d = status.active;
+        var cls = d.status === 'complete' ? 'is-success' : d.status === 'error' ? 'is-danger' : 'is-info';
+        html += '<div class="download-card glass"><h4>' + d.title + '</h4>';
+        html += '<progress class="progress ' + cls + '" value="' + d.progress + '" max="100">' + d.progress + '%</progress>';
+        html += '<div class="download-meta"><span>Status: ' + d.status + '</span><span>Speed: ' + d.speed + ' | ETA: ' + d.eta + '</span></div></div>';
+      }
+      if (status.pending && status.pending.length > 0) {
+        html += '<div class="section-header"><span>{% trans %}Pending downloads{% endtrans %}</span></div>';
+        status.pending.forEach(function(d) {
+          html += '<div class="download-card glass" style="padding:10px"><span class="has-text-grey">' + (d.display_title || d.video_url) + '</span></div>';
+        });
+      }
+      if (status.errors && status.errors.length > 0) {
+        html += '<div class="section-header"><span class="has-text-danger">{% trans %}Download Errors{% endtrans %}</span></div>';
+        status.errors.forEach(function(d) {
+          html += '<div class="download-card glass" style="border-left:3px solid var(--danger); padding:10px">';
+          html += '<span>' + (d.title || d.url) + '</span><br><small class="has-text-danger">' + d.error + '</small>';
+          html += '<button class="delete ml-2" onclick="dismissDownloadError(\'' + d.id + '\')" style="float:right"></button></div>';
+        });
+      }
+      if (html) { $("#downloads-container").html(html); $("#downloads-section").fadeIn(); }
+      else { $("#downloads-section").fadeOut(); }
+      var shouldPoll = status.active || (status.pending && status.pending.length > 0);
+      if (shouldPoll && $('#downloads-section').length > 0) {
+        window.downloadPollTimer = setTimeout(window.queuePage_getDownloads, 500);
+      }
+    });
+  };
+  window.dismissDownloadError = function(errorId) {
+    $.ajax({ url: '{{ url_for("queue.delete_download_error", error_id="ERROR_ID") }}'.replace("ERROR_ID", errorId), type: 'DELETE', success: function() { window.queuePage_getDownloads(); } });
+  };
+
+  // Socket listeners
+  window.socket.off("queue_update"); window.socket.on("queue_update", window.queuePage_getQueue);
+  window.socket.off("now_playing"); window.socket.on("now_playing", window.queuePage_getQueue);
+  window.socket.off("download_started"); window.socket.on("download_started", function() { if (!window.downloadPollTimer) window.queuePage_getDownloads(); });
+  window.socket.off("download_stopped"); window.socket.on("download_stopped", function() { if (window.downloadPollTimer) { clearTimeout(window.downloadPollTimer); window.downloadPollTimer = null; } window.queuePage_getDownloads(); });
+  window.queuePageState.previousQueue = null;
+  window.queuePageState.previousNowPlaying = null;
+
+  $(function() {
+    window.queuePage_getDownloads();
+    window.queuePage_getQueue();
+    $('.modal-background').click(function() { window.closeSongOptions(); window.closeNowPlayingOptions(); });
+    $(document).on('click', '.queue-song-options-btn', function(e) {
+      e.preventDefault();
+      openSongOptions(parseInt($(this).data('index')), decodeURIComponent($(this).data('file')), decodeURIComponent($(this).data('title')));
+    });
+    $(document).on('click', '.now-playing-options-btn', function(e) { e.preventDefault(); openNowPlayingOptions(); });
+
+    // Mini player controls
+    $("#mini-pause-btn").click(function(e) { e.stopPropagation(); $.get('/pause'); });
+    $("#mini-skip-btn").click(function(e) { e.stopPropagation(); $.get('/skip'); });
+
+    // Audio mode toggle
+    $(document).on("click", ".audio-mode-btn", function() {
+      var mode = $(this).data("mode");
+      $.get("/audio_mode/" + mode);
+      $(".audio-mode-btn").removeClass("active");
+      $(this).addClass("active");
+      toggleControlPanel();
+    });
+    $(".mini-player").click(function(e) {
+      if ($(e.target).closest('.mini-player__btn').length === 0) toggleControlPanel();
+    });
+
+    // Control panel actions
+    $("#cp-restart").click(function() { $.get('/restart'); toggleControlPanel(); });
+    $("#cp-pause").click(function() { $.get('/pause'); });
+    $("#cp-skip").click(function() { $.get('/skip'); toggleControlPanel(); });
+    $("#cp-volume").on("input", function() { $.get('/volume/' + ($(this).val() / 100)); });
+    $("#cp-transpose").on("change", function() {
+      var val = $(this).val();
+      $.get('/transpose/' + val);
+      $("#cp-transpose-label").text(getSemitonesLabel(parseInt(val)));
+    });
+    $(".control-panel__backdrop").click(function() { toggleControlPanel(); });
+
+    {% if admin %}
+    // Keyboard shortcuts
+    $(document).keydown(function(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      switch (e.key) {
+        case ' ': e.preventDefault(); $.get('/pause'); break;
+        case 's': case 'S': $.get('/skip'); break;
+        case 'r': case 'R': $.get('/restart'); break;
+        case 'ArrowUp': e.preventDefault(); $.get('/vol_up'); break;
+        case 'ArrowDown': e.preventDefault(); $.get('/vol_down'); break;
+        case 'l': case 'L': window.socket.emit('show_leaderboard'); break;
+      }
+    });
+    {% endif %}
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+
+<!-- Mini Player Bar -->
+<div class="mini-player glass is-hidden">
+  <div class="mini-player__info">
+    <div class="mini-player__title">--</div>
+    <div class="mini-player__singer">-- <span class="mini-player__mode" style="display:none; color:var(--accent-cyan, #06b6d4); font-size:0.75rem; margin-left:4px"></span></div>
+  </div>
+  <div class="mini-player__controls">
+    <button id="mini-pause-btn" class="mini-player__btn"><i class="icon-pause"></i></button>
+    <button id="mini-skip-btn" class="mini-player__btn"><i class="icon-to-end"></i></button>
+  </div>
+  <div class="mini-player__progress">
+    <div class="mini-player__progress-fill"></div>
+  </div>
+</div>
+
+<!-- Expanded Control Panel -->
+<div class="control-panel">
+  <div class="control-panel__backdrop"></div>
+  <div class="control-panel__body glass">
+    <div class="control-panel__song">--</div>
+    <div class="control-panel__singer">--</div>
+    <div class="control-panel__buttons">
+      <button id="cp-restart" class="control-panel__btn"><i class="icon-to-start"></i></button>
+      <button id="cp-pause" class="control-panel__btn control-panel__btn--primary"><i class="icon-pause"></i></button>
+      <button id="cp-skip" class="control-panel__btn"><i class="icon-to-end"></i></button>
+    </div>
+    <div class="control-panel__slider-group">
+      <label><i class="icon-volume-up"></i> {% trans %}Volume{% endtrans %}</label>
+      <input id="cp-volume" type="range" min="0" max="100" value="85" class="control-panel__slider">
+    </div>
+    {% if is_transpose_enabled %}
+    <div class="control-panel__slider-group">
+      <label><i class="icon-music-1"></i> {% trans %}Key{% endtrans %} <span id="cp-transpose-label">0 semitones</span></label>
+      <input id="cp-transpose" type="range" min="-12" max="12" value="0" class="control-panel__slider">
+    </div>
+    {% endif %}
+    <div class="control-panel__slider-group" id="cp-audio-mode-group" style="display:none">
+      <label><i class="icon-headphones"></i> {% trans %}Audio{% endtrans %}</label>
+      <div class="audio-mode-toggle">
+        <button class="audio-mode-btn active" data-mode="original">{% trans %}Original{% endtrans %}</button>
+        <button class="audio-mode-btn" data-mode="instrumental">{% trans %}Karaoke{% endtrans %}</button>
+        <button class="audio-mode-btn" data-mode="guide">{% trans %}Guide{% endtrans %}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Fair queue banner -->
+{% if fair_queue_enabled or limit_user_songs_by > 0 %}
+<div class="fair-queue-banner glass" style="margin-top: 68px">
+  <i class="icon icon-shuffle"></i>
+  {% if fair_queue_enabled %}<b>{% trans %}Fair Queue{% endtrans %}</b>{% endif %}
+  {% if limit_user_songs_by > 0 %} &middot; {% trans %}Max{% endtrans %} <b>{{ limit_user_songs_by }}</b> {% trans %}per person{% endtrans %}{% endif %}
+  <span id="fair-queue-counts" style="margin-left: 8px"></span>
+</div>
+{% endif %}
+
+<!-- Queue List -->
+<div id="queue-list" style="margin-top: {% if fair_queue_enabled or limit_user_songs_by > 0 %}8px{% else %}68px{% endif %}; padding-bottom: 80px;">
+</div>
+
+{% if admin %}
+<!-- Queue actions -->
+<div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0;">
+  <div style="display:flex; align-items:center; gap:8px">
+    <a class="add-random pill active" href="#"><i class="icon icon-plus-circled"></i></a>
+    {% trans %}Add{% endtrans %}
+    <input id="randomNumberInput" class="pref-input" pattern="\d*" maxlength="2" value="3" min="1" max="99" style="width:42px; text-align:center" />
+    {% trans %}random{% endtrans %}
+  </div>
+  <a class="pill" style="border:1px solid var(--danger); color:var(--danger)" href="/queue/edit?action=clear">
+    <i class="icon icon-trash-empty"></i> {% trans %}Clear{% endtrans %}
+  </a>
+</div>
+
+<!-- Song Options Modal -->
+<div class="modal" id="song-options-modal">
+  <div class="modal-background"></div>
+  <div class="modal-card glass" style="width:90%; max-width:400px;">
+    <header class="modal-card-head"><p class="modal-card-title" id="modal-song-title"></p>
+      <button class="delete" onclick="closeSongOptions()"></button></header>
+    <section class="modal-card-body" style="padding:0">
+      <a id="opt-top" class="panel-block py-3" href="#" onclick="executeQueueAction('top'); return false;"><span class="icon has-text-info mr-2"><i class="icon-angle-double-up"></i></span><b>{% trans %}Play Next{% endtrans %}</b></a>
+      <a id="opt-up" class="panel-block py-3" href="#" onclick="executeQueueAction('up'); return false;"><span class="icon mr-2"><i class="icon-angle-up"></i></span>{% trans %}Move Up{% endtrans %}</a>
+      <a id="opt-down" class="panel-block py-3" href="#" onclick="executeQueueAction('down'); return false;"><span class="icon mr-2"><i class="icon-angle-down"></i></span>{% trans %}Move Down{% endtrans %}</a>
+      <a id="opt-bottom" class="panel-block py-3" href="#" onclick="executeQueueAction('bottom'); return false;"><span class="icon has-text-info mr-2"><i class="icon-angle-double-down"></i></span>{% trans %}Move to Bottom{% endtrans %}</a>
+      <a id="opt-delete" class="panel-block py-3 has-text-danger" href="#" onclick="executeQueueAction('delete'); return false;"><span class="icon mr-2"><i class="icon-trash-empty"></i></span>{% trans %}Remove{% endtrans %}</a>
+    </section>
+  </div>
+</div>
+
+<!-- Now Playing Options Modal -->
+<div class="modal" id="now-playing-options-modal">
+  <div class="modal-background"></div>
+  <div class="modal-card glass" style="width:90%; max-width:400px;">
+    <header class="modal-card-head"><p class="modal-card-title" id="np-modal-song-title"></p>
+      <button class="delete" onclick="closeNowPlayingOptions()"></button></header>
+    <section class="modal-card-body" style="padding:0">
+      <a class="panel-block py-3" href="#" onclick="executePlaybackAction('restart'); return false;"><span class="icon mr-2"><i class="icon-to-start"></i></span>{% trans %}Restart{% endtrans %}</a>
+      <a id="np-pause-btn" class="panel-block py-3" href="#" onclick="executePlaybackAction('pause'); return false;"><span class="icon mr-2"><i class="icon-pause"></i></span>{% trans %}Pause{% endtrans %}</a>
+      <a class="panel-block py-3 has-text-danger" href="#" onclick="executePlaybackAction('skip'); return false;"><span class="icon mr-2"><i class="icon-to-end"></i></span>{% trans %}Skip{% endtrans %}</a>
+    </section>
+  </div>
+</div>
+{% endif %}
+
+<!-- Downloads section -->
+<div id="downloads-section" style="display:none; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
+  <div class="section-header"><span>{% trans %}Downloads{% endtrans %}</span></div>
+  <div id="downloads-container"></div>
+</div>
+
+{% endblock %}

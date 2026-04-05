@@ -15,6 +15,7 @@ from qrcode.image.pure import PyPNGImage
 
 from pikaraoke.lib.download_manager import DownloadManager
 from pikaraoke.lib.events import EventSystem
+from pikaraoke.lib.favorites import Favorites
 from pikaraoke.lib.ffmpeg import (
     get_ffmpeg_version,
     is_transpose_enabled,
@@ -27,10 +28,12 @@ from pikaraoke.lib.get_platform import (
     is_raspberry_pi,
 )
 from pikaraoke.lib.network import get_ip
+from pikaraoke.lib.play_stats import PlayStats
 from pikaraoke.lib.playback_controller import PlaybackController
 from pikaraoke.lib.preference_manager import PreferenceManager
 from pikaraoke.lib.queue_manager import QueueManager
 from pikaraoke.lib.song_manager import SongManager
+from pikaraoke.lib.vocal_separator import VocalSeparator
 from pikaraoke.lib.youtube_dl import (
     get_search_results,
     get_youtubedl_version,
@@ -240,6 +243,11 @@ class Karaoke:
         # Play history this session: list of {title, user, user2}
         self.play_history: list[dict] = []
 
+        # Persistent cross-session data
+        data_dir = get_data_directory()
+        self.play_stats = PlayStats(data_dir)
+        self.favorites = Favorites(data_dir)
+
         # Initialize queue manager
         self.queue_manager = QueueManager(
             preferences=self.preferences,
@@ -250,6 +258,12 @@ class Karaoke:
         )
 
         # Initialize and start download manager
+        # Initialize vocal separator (optional, requires demucs/whisper)
+        self.vocal_separator = VocalSeparator(
+            events=self.events,
+            download_path=self.download_path,
+        )
+
         self.download_manager = DownloadManager(
             events=self.events,
             preferences=self.preferences,
@@ -258,6 +272,7 @@ class Karaoke:
             download_path=self.download_path,
             youtubedl_proxy=self.youtubedl_proxy,
             additional_ytdl_args=self.additional_ytdl_args,
+            vocal_separator=self.vocal_separator if self.vocal_separator.is_available() else None,
         )
         self.download_manager.start()
 
@@ -267,6 +282,72 @@ class Karaoke:
         Priority: CLI argument (if provided) > config file > PreferenceManager.DEFAULTS
         """
         self.preferences.apply_all(**cli_overrides)
+
+    def change_audio_mode(self, audio_mode: str) -> None:
+        """Restart the current song with a different audio mode (original/instrumental/guide)."""
+        filename = self.playback_controller.now_playing_filename
+        user = self.playback_controller.now_playing_user
+        semitones = self.playback_controller.now_playing_transpose
+
+        if filename is None or user is None:
+            logging.warning("Cannot change audio mode: no song currently playing")
+            return
+
+        mode_labels = {"original": "Original", "instrumental": "Karaoke", "guide": "Guide Vocal"}
+        label = mode_labels.get(audio_mode, audio_mode)
+        self.log_and_send(_("Audio: %s") % label)
+        self.queue_manager.enqueue(filename, user, semitones, True, audio_mode=audio_mode)
+        self.playback_controller.skip(log_action=False)
+
+    def reset_session(self) -> None:
+        """Reset all session state for a new KTV session."""
+        self.queue_manager.queue_clear()
+        self.score_history.clear()
+        self.play_history.clear()
+        self.known_singers.clear()
+        self.session_start = time.time()
+        logging.info("Session reset")
+
+    def get_session_summary(self) -> dict:
+        """Compute summary statistics for the current session."""
+        elapsed = int(time.time() - self.session_start)
+        total_songs = len(self.play_history)
+        singers = list(self.known_singers)
+
+        # Most active singer
+        singer_counts: dict[str, int] = {}
+        for entry in self.play_history:
+            u = entry.get("user", "")
+            if u:
+                singer_counts[u] = singer_counts.get(u, 0) + 1
+        most_active = max(singer_counts, key=singer_counts.get) if singer_counts else None
+
+        # Top scorer
+        top_scorer = None
+        if self.score_history:
+            by_singer: dict[str, list[int]] = {}
+            for entry in self.score_history:
+                by_singer.setdefault(entry["singer"], []).append(entry["score"])
+            avgs = {s: sum(scores) / len(scores) for s, scores in by_singer.items()}
+            top_scorer = max(avgs, key=avgs.get) if avgs else None
+
+        # Most played song this session
+        song_counts: dict[str, int] = {}
+        for entry in self.play_history:
+            t = entry.get("title", "")
+            if t:
+                song_counts[t] = song_counts.get(t, 0) + 1
+        most_played = max(song_counts, key=song_counts.get) if song_counts else None
+
+        return {
+            "elapsed_seconds": elapsed,
+            "total_songs": total_songs,
+            "total_singers": len(singers),
+            "singers": singers,
+            "most_active_singer": most_active,
+            "top_scorer": top_scorer,
+            "most_played_song": most_played,
+        }
 
     def get_url(self):
         """Get the URL for accessing the PiKaraoke web interface.
@@ -461,6 +542,12 @@ class Karaoke:
         # Get playback state from PlaybackController
         playback_state = self.playback_controller.get_now_playing()
 
+        # Check if stems exist for the current song
+        has_stems = False
+        filename = self.playback_controller.now_playing_filename
+        if filename:
+            has_stems = self.vocal_separator.has_stems(filename)
+
         return {
             **playback_state,
             "up_next": next_song["title"] if next_song else None,
@@ -468,6 +555,7 @@ class Karaoke:
             "next_user2": next_song.get("user2") if next_song else None,
             "volume": self.volume,
             "session_elapsed": int(time.time() - self.session_start),
+            "has_stems": has_stems,
         }
 
     def update_now_playing_socket(self) -> None:
@@ -515,15 +603,22 @@ class Karaoke:
                     song = self.queue_manager.pop_next()
                     if not song:
                         continue
+                    song_title = song.get("title", "")
                     self.play_history.append(
                         {
-                            "title": song.get("title", ""),
+                            "title": song_title,
                             "user": song.get("user", ""),
                             "user2": song.get("user2"),
                         }
                     )
+                    if song_title:
+                        self.play_stats.increment(song_title)
                     result = self.playback_controller.play_file(
-                        song["file"], song["user"], song["semitones"], song.get("user2")
+                        song["file"],
+                        song["user"],
+                        song["semitones"],
+                        song.get("user2"),
+                        song.get("audio_mode", "original"),
                     )
 
                     if not result.success and result.error:

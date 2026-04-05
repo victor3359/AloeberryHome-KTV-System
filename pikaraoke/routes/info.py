@@ -80,6 +80,7 @@ def info():
             "mid": k.mid_score_phrases,
             "high": k.high_score_phrases,
         },
+        splash_theme=k.preferences.get_or_default("splash_theme"),
     )
 
 

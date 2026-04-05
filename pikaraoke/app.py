@@ -44,6 +44,7 @@ from pikaraoke.routes.queue import queue_bp
 from pikaraoke.routes.scores import scores_bp
 from pikaraoke.routes.search import search_bp
 from pikaraoke.routes.socket_events import setup_socket_events
+from pikaraoke.routes.songpicker import songpicker_bp
 from pikaraoke.routes.splash import splash_bp
 from pikaraoke.routes.stream import stream_bp
 
@@ -97,6 +98,7 @@ _api_blueprints = [
 _internal_blueprints = [
     home_bp,
     info_bp,
+    songpicker_bp,
     splash_bp,
     batch_song_renamer_bp,
 ]

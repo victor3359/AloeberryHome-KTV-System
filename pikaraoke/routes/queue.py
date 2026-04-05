@@ -60,11 +60,12 @@ def queue():
     site_name = get_site_name()
     user_counts = dict(Counter(item["user"] for item in k.queue_manager.queue))
     return render_template(
-        "queue.html",
+        "queueview.html",
         queue=k.queue_manager.queue,
         site_title=site_name,
         title="Queue",
         admin=is_admin(),
+        is_transpose_enabled=k.is_transpose_enabled,
         fair_queue_enabled=k.enable_fair_queue,
         limit_user_songs_by=k.limit_user_songs_by,
         user_counts=user_counts,
