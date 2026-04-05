@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from queue import Queue
@@ -199,7 +200,13 @@ class StreamManager:
         )
 
         logging.info("Starting multi-audio HLS transcode: %s", " ".join(cmd[:10]) + "...")
-        self.ffmpeg_process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+        # Lower priority so playback transcoding doesn't starve the main thread
+        _creationflags = (
+            subprocess.CREATE_BELOW_NORMAL_PRIORITY_CLASS if sys.platform == "win32" else 0
+        )
+        self.ffmpeg_process = subprocess.Popen(
+            cmd, stderr=subprocess.PIPE, stdin=subprocess.PIPE, creationflags=_creationflags
+        )
 
         self.ffmpeg_log = Queue()
         t = Thread(
@@ -297,6 +304,14 @@ class StreamManager:
             start_position,
         )
         self.ffmpeg_process = ffmpeg_cmd.run_async(pipe_stderr=True, pipe_stdin=True)
+        # Lower FFmpeg priority so it doesn't starve playback
+        if sys.platform == "win32" and self.ffmpeg_process.pid:
+            try:
+                import psutil
+
+                psutil.Process(self.ffmpeg_process.pid).nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            except Exception:
+                pass
 
         # FFmpeg outputs to stderr - prevent blocking reads
         self.ffmpeg_log = Queue()

@@ -574,7 +574,16 @@ class VocalSeparator:
 
             # First run downloads model (~80MB), allow extra time
             logging.info("Running demucs (device=%s)...", device)
-            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+            env = {
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+                "OMP_NUM_THREADS": "2",
+                "MKL_NUM_THREADS": "2",
+            }
+            # Lower priority on Windows so playback isn't starved
+            creationflags = (
+                subprocess.CREATE_BELOW_NORMAL_PRIORITY_CLASS if sys.platform == "win32" else 0
+            )
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -583,6 +592,7 @@ class VocalSeparator:
                 env=env,
                 encoding="utf-8",
                 errors="replace",
+                creationflags=creationflags,
             )
 
             if result.returncode != 0:
@@ -673,6 +683,8 @@ class VocalSeparator:
             import warnings
 
             warnings.filterwarnings("ignore", message=".*Triton.*")
+            # Limit CPU threads to avoid starving playback
+            torch.set_num_threads(2)
             # Cache model globally to avoid reloading 400MB per song
             cache_key = f"{self._whisper_model}_{device}"
             if not hasattr(VocalSeparator, "_whisper_cache"):

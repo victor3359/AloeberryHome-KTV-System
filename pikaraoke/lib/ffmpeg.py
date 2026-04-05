@@ -64,7 +64,7 @@ def build_multi_audio_hls_cmd(
     vcodec = "copy" if fr.file_extension == ".mp4" else "libx264"
     if supports_hardware_h264_encoding() and vcodec != "copy":
         vcodec = "h264_v4l2m2m"
-    cmd += ["-c:v", vcodec, "-c:a", "aac", "-b:a", "192k"]
+    cmd += ["-c:v", vcodec, "-c:a", "aac", "-b:a", "192k", "-threads", "2"]
 
     # HLS with separate video + audio-only renditions (correct var_stream_map syntax)
     cmd += [
@@ -228,6 +228,7 @@ def build_ffmpeg_cmd(
             vcodec=vcodec,
             acodec=acodec,
             preset="ultrafast",
+            threads=2,
             listen=1,
             f="mp4",
             video_bitrate=vbitrate,
@@ -249,6 +250,7 @@ def build_ffmpeg_cmd(
             ac=2,  # Force stereo
             ar=48000,  # Standard sample rate
             preset="ultrafast",
+            threads=2,
             f="hls",
             hls_time=3,
             hls_list_size=0,
