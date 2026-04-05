@@ -96,7 +96,7 @@
   <!-- QR Code / URL card -->
   <div class="accordion-card glass">
     <div class="accordion-header">
-      <span><i class="icon icon-info-circled"></i> {% trans %}Share{% endtrans %}</span>
+      <span><i class="icon icon-info-circled"></i> 分享連結</span>
       <span class="accordion-chevron"></span>
     </div>
     <div class="accordion-body" style="text-align:center">
@@ -110,83 +110,83 @@
   <!-- Settings card -->
   <div class="accordion-card glass">
     <div class="accordion-header">
-      <span><i class="icon icon-cog"></i> {% trans %}Settings{% endtrans %}</span>
+      <span><i class="icon icon-cog"></i> 設定</span>
       <span class="accordion-chevron"></span>
     </div>
     <div class="accordion-body">
 
-      <h4 style="margin-bottom:12px"><i class="icon icon-mic-1"></i> {% trans %}Session{% endtrans %}</h4>
-      <div class="pref-row"><input id="pref-fair-queue" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="enable_fair_queue" {% if enable_fair_queue %}checked{% endif %}><label class="pref-label" for="pref-fair-queue">{% trans %}Take turns (rotate singers){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-auto-dj" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="auto_dj" {% if auto_dj %}checked{% endif %}><label class="pref-label" for="pref-auto-dj">{% trans %}Auto-DJ (random songs when queue empty){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-limit" class="pref-input user-preference-input" type="number" min="0" max="99" data-pref="limit_user_songs_by" data-start-value="{{ limit_user_songs_by }}" value="{{ limit_user_songs_by }}"><label class="pref-label" for="pref-limit">{% trans %}Max songs per person (0 = unlimited){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-splash-delay" class="pref-input user-preference-input" type="number" min="0" max="99" data-pref="splash_delay" data-start-value="{{ splash_delay }}" value="{{ splash_delay }}"><label class="pref-label" for="pref-splash-delay">{% trans %}Pause between songs (seconds){% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-score" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_score" {% if disable_score %}checked{% endif %}><label class="pref-label" for="pref-score">{% trans %}Turn off score screen{% endtrans %}</label></div>
+      <h4 style="margin-bottom:12px"><i class="icon icon-mic-1"></i> 歡唱設定</h4>
+      <div class="pref-row"><input id="pref-fair-queue" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="enable_fair_queue" {% if enable_fair_queue %}checked{% endif %}><label class="pref-label" for="pref-fair-queue">輪流制（公平排隊，輪流唱歌）</label></div>
+      <div class="pref-row"><input id="pref-auto-dj" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="auto_dj" {% if auto_dj %}checked{% endif %}><label class="pref-label" for="pref-auto-dj">自動 DJ（沒人點歌時隨機播放）</label></div>
+      <div class="pref-row"><input id="pref-limit" class="pref-input user-preference-input" type="number" min="0" max="99" data-pref="limit_user_songs_by" data-start-value="{{ limit_user_songs_by }}" value="{{ limit_user_songs_by }}"><label class="pref-label" for="pref-limit">每人最多點歌數（0 = 不限）</label></div>
+      <div class="pref-row"><input id="pref-splash-delay" class="pref-input user-preference-input" type="number" min="0" max="99" data-pref="splash_delay" data-start-value="{{ splash_delay }}" value="{{ splash_delay }}"><label class="pref-label" for="pref-splash-delay">歌曲間隔秒數</label></div>
+      <div class="pref-row"><input id="pref-score" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_score" {% if disable_score %}checked{% endif %}><label class="pref-label" for="pref-score">關閉評分畫面</label></div>
 
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
-      <h4 style="margin-bottom:12px"><i class="icon icon-volume-up"></i> {% trans %}Audio{% endtrans %}</h4>
-      <div class="pref-row"><input id="pref-volume" class="pref-input user-preference-input" type="number" min="0" max="100" step="5" data-pref="volume" data-start-value="{{ volume }}" value="{{ volume }}"><label class="pref-label" for="pref-volume">{% trans %}Playback volume{% endtrans %} (0-100)</label></div>
-      <div class="pref-row"><input id="bg-music-volume" class="pref-input user-preference-input" type="number" min="0" max="100" step="5" data-pref="bg_music_volume" data-start-value="{{ bg_music_volume }}" value="{{ bg_music_volume }}"><label class="pref-label" for="bg-music-volume">{% trans %}Background music volume{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-normalize" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="normalize_audio" {% if normalize_audio %}checked{% endif %}><label class="pref-label" for="pref-normalize">{% trans %}Equalize volume levels{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-high-quality" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="high_quality" {% if high_quality %}checked{% endif %}><label class="pref-label" for="pref-high-quality">{% trans %}Download in high quality (1080p){% endtrans %}</label></div>
+      <h4 style="margin-bottom:12px"><i class="icon icon-volume-up"></i> 音訊</h4>
+      <div class="pref-row"><input id="pref-volume" class="pref-input user-preference-input" type="number" min="0" max="100" step="5" data-pref="volume" data-start-value="{{ volume }}" value="{{ volume }}"><label class="pref-label" for="pref-volume">播放音量 (0-100)</label></div>
+      <div class="pref-row"><input id="bg-music-volume" class="pref-input user-preference-input" type="number" min="0" max="100" step="5" data-pref="bg_music_volume" data-start-value="{{ bg_music_volume }}" value="{{ bg_music_volume }}"><label class="pref-label" for="bg-music-volume">背景音樂音量</label></div>
+      <div class="pref-row"><input id="pref-normalize" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="normalize_audio" {% if normalize_audio %}checked{% endif %}><label class="pref-label" for="pref-normalize">自動統一音量大小</label></div>
+      <div class="pref-row"><input id="pref-high-quality" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="high_quality" {% if high_quality %}checked{% endif %}><label class="pref-label" for="pref-high-quality">高畫質下載 (1080p)</label></div>
 
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
-      <h4 style="margin-bottom:12px"><i class="icon icon-cog"></i> {% trans %}Display{% endtrans %}</h4>
+      <h4 style="margin-bottom:12px"><i class="icon icon-cog"></i> 電視畫面</h4>
       <div class="pref-row">
         <select id="pref-theme" class="pref-input user-preference-input" data-pref="splash_theme" data-start-value="{{ splash_theme|default('classic') }}" style="width:auto">
-          <option value="classic" {% if splash_theme|default('classic') == 'classic' %}selected{% endif %}>Classic</option>
-          <option value="party" {% if splash_theme == 'party' %}selected{% endif %}>Party</option>
-          <option value="romantic" {% if splash_theme == 'romantic' %}selected{% endif %}>Romantic</option>
-          <option value="neon" {% if splash_theme == 'neon' %}selected{% endif %}>Neon</option>
+          <option value="classic" {% if splash_theme|default('classic') == 'classic' %}selected{% endif %}>經典</option>
+          <option value="party" {% if splash_theme == 'party' %}selected{% endif %}>派對</option>
+          <option value="romantic" {% if splash_theme == 'romantic' %}selected{% endif %}>浪漫</option>
+          <option value="neon" {% if splash_theme == 'neon' %}selected{% endif %}>霓虹</option>
         </select>
-        <label class="pref-label" for="pref-theme">{% trans %}TV theme{% endtrans %}</label>
+        <label class="pref-label" for="pref-theme">主題風格</label>
       </div>
-      <div class="pref-row"><input id="pref-splash-clock" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="show_splash_clock" {% if show_splash_clock %}checked{% endif %}><label class="pref-label" for="pref-splash-clock">{% trans %}Show clock on TV{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-qr-code" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_url" {% if hide_url %}checked{% endif %}><label class="pref-label" for="pref-qr-code">{% trans %}Hide QR code{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-overlay" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_overlay" {% if hide_overlay %}checked{% endif %}><label class="pref-label" for="pref-overlay">{% trans %}Hide all TV overlays{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-notifications" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_notifications" {% if hide_notifications %}checked{% endif %}><label class="pref-label" for="pref-notifications">{% trans %}Hide notifications{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-bg-video" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_bg_video" {% if disable_bg_video %}checked{% endif %}><label class="pref-label" for="pref-bg-video">{% trans %}Turn off idle background video{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-bg-music" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_bg_music" {% if disable_bg_music %}checked{% endif %}><label class="pref-label" for="pref-bg-music">{% trans %}Turn off idle background music{% endtrans %}</label></div>
-      <div class="pref-row"><input id="pref-screensaver-timeout" class="pref-input user-preference-input" type="number" min="0" max="999" data-pref="screensaver_timeout" data-start-value="{{ screensaver_timeout }}" value="{{ screensaver_timeout }}"><label class="pref-label" for="pref-screensaver-timeout">{% trans %}Screensaver after idle (seconds, 0 = off){% endtrans %}</label></div>
+      <div class="pref-row"><input id="pref-splash-clock" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="show_splash_clock" {% if show_splash_clock %}checked{% endif %}><label class="pref-label" for="pref-splash-clock">顯示時鐘</label></div>
+      <div class="pref-row"><input id="pref-qr-code" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_url" {% if hide_url %}checked{% endif %}><label class="pref-label" for="pref-qr-code">隱藏 QR Code</label></div>
+      <div class="pref-row"><input id="pref-overlay" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_overlay" {% if hide_overlay %}checked{% endif %}><label class="pref-label" for="pref-overlay">隱藏所有覆蓋資訊</label></div>
+      <div class="pref-row"><input id="pref-notifications" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="hide_notifications" {% if hide_notifications %}checked{% endif %}><label class="pref-label" for="pref-notifications">隱藏通知訊息</label></div>
+      <div class="pref-row"><input id="pref-bg-video" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_bg_video" {% if disable_bg_video %}checked{% endif %}><label class="pref-label" for="pref-bg-video">關閉待機背景影片</label></div>
+      <div class="pref-row"><input id="pref-bg-music" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="disable_bg_music" {% if disable_bg_music %}checked{% endif %}><label class="pref-label" for="pref-bg-music">關閉待機背景音樂</label></div>
+      <div class="pref-row"><input id="pref-screensaver-timeout" class="pref-input user-preference-input" type="number" min="0" max="999" data-pref="screensaver_timeout" data-start-value="{{ screensaver_timeout }}" value="{{ screensaver_timeout }}"><label class="pref-label" for="pref-screensaver-timeout">螢幕保護程式啟動秒數（0 = 關閉）</label></div>
 
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
-      <h4 style="margin-bottom:12px"><i class="icon icon-info-circled"></i> {% trans %}Language{% endtrans %}</h4>
+      <h4 style="margin-bottom:12px"><i class="icon icon-info-circled"></i> 語言</h4>
       <div class="pref-row">
         <select id="pref-language" class="pref-input user-preference-input" data-pref="preferred_language" data-start-value="{{ preferred_language }}" style="width:auto">
           {% for lang_code, lang_name in languages.items() %}
           <option value="{{ lang_code }}" {% if preferred_language == lang_code %}selected{% endif %}>{{ lang_name }}</option>
           {% endfor %}
         </select>
-        <label class="pref-label" for="pref-language">{% trans %}Interface language (restart required){% endtrans %}</label>
+        <label class="pref-label" for="pref-language">介面語言（需重啟）</label>
       </div>
 
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
       <details style="margin-bottom:12px">
-        <summary style="cursor:pointer; color:var(--text-secondary); font-size:0.85rem"><i class="icon icon-cog"></i> {% trans %}Advanced{% endtrans %}</summary>
+        <summary style="cursor:pointer; color:var(--text-secondary); font-size:0.85rem"><i class="icon icon-cog"></i> 進階設定</summary>
         <div style="margin-top:12px">
-          <div class="pref-row"><input id="pref-avsync" class="pref-input user-preference-input" type="number" step="0.1" min="-10" max="10" data-pref="avsync" data-start-value="{{ avsync }}" value="{{ avsync }}"><label class="pref-label" for="pref-avsync" title="{% trans %}Negative = audio earlier, positive = audio later{% endtrans %}">{% trans %}Audio delay (seconds){% endtrans %}</label></div>
-          <div class="pref-row"><input id="pref-buffer" class="pref-input user-preference-input" type="number" min="0" max="9999" data-pref="buffer_size" data-start-value="{{ buffer_size }}" value="{{ buffer_size }}"><label class="pref-label" for="pref-buffer">{% trans %}Stream buffer (KB){% endtrans %}</label></div>
-          <div class="pref-row"><input id="pref-transcode" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="complete_transcode_before_play" {% if complete_transcode_before_play %}checked{% endif %}><label class="pref-label" for="pref-transcode">{% trans %}Wait for full processing before play{% endtrans %}</label></div>
-          <div class="pref-row"><input id="pref-cdg" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="cdg_pixel_scaling" {% if cdg_pixel_scaling %}checked{% endif %}><label class="pref-label" for="pref-cdg">{% trans %}CDG pixel scaling (legacy format){% endtrans %}</label></div>
-          <div class="pref-row"><input id="pref-per-page" class="pref-input user-preference-input" type="number" min="10" max="1000" step="10" data-pref="browse_results_per_page" data-start-value="{{ browse_results_per_page }}" value="{{ browse_results_per_page }}"><label class="pref-label" for="pref-per-page">{% trans %}Songs per page{% endtrans %}</label></div>
+          <div class="pref-row"><input id="pref-avsync" class="pref-input user-preference-input" type="number" step="0.1" min="-10" max="10" data-pref="avsync" data-start-value="{{ avsync }}" value="{{ avsync }}"><label class="pref-label" for="pref-avsync" title="負值 = 音訊提前，正值 = 音訊延後">音訊延遲校正（秒）</label></div>
+          <div class="pref-row"><input id="pref-buffer" class="pref-input user-preference-input" type="number" min="0" max="9999" data-pref="buffer_size" data-start-value="{{ buffer_size }}" value="{{ buffer_size }}"><label class="pref-label" for="pref-buffer">串流緩衝區（KB）</label></div>
+          <div class="pref-row"><input id="pref-transcode" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="complete_transcode_before_play" {% if complete_transcode_before_play %}checked{% endif %}><label class="pref-label" for="pref-transcode">完整處理後再播放</label></div>
+          <div class="pref-row"><input id="pref-cdg" class="pref-checkbox user-preference-checkbox" type="checkbox" data-pref="cdg_pixel_scaling" {% if cdg_pixel_scaling %}checked{% endif %}><label class="pref-label" for="pref-cdg">CDG 像素縮放（舊格式）</label></div>
+          <div class="pref-row"><input id="pref-per-page" class="pref-input user-preference-input" type="number" min="10" max="1000" step="10" data-pref="browse_results_per_page" data-start-value="{{ browse_results_per_page }}" value="{{ browse_results_per_page }}"><label class="pref-label" for="pref-per-page">每頁顯示歌曲數</label></div>
         </div>
       </details>
 
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
       <details style="margin-bottom:12px">
-        <summary style="cursor:pointer; color:var(--text-secondary); font-size:0.85rem"><i class="icon icon-edit"></i> {% trans %}Score phrases{% endtrans %}</summary>
+        <summary style="cursor:pointer; color:var(--text-secondary); font-size:0.85rem"><i class="icon icon-edit"></i> 評分用語</summary>
         <div style="margin-top:12px">
-          <p class="has-text-grey" style="font-size:0.85rem; margin-bottom:8px">{% trans %}Add one phrase per line{% endtrans %}</p>
-          <label style="font-size:0.85rem; color:var(--text-secondary)">LOW (&lt;30)</label>
+          <p class="has-text-grey" style="font-size:0.85rem; margin-bottom:8px">每行輸入一句評語</p>
+          <label style="font-size:0.85rem; color:var(--text-secondary)">低分（&lt;30）</label>
           <textarea id="low-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.low | replace('|', '\n') }}</textarea>
-          <label style="font-size:0.85rem; color:var(--text-secondary)">MID (30-60)</label>
+          <label style="font-size:0.85rem; color:var(--text-secondary)">中等（30-60）</label>
           <textarea id="mid-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.mid | replace('|', '\n') }}</textarea>
-          <label style="font-size:0.85rem; color:var(--text-secondary)">HIGH (&gt;60)</label>
+          <label style="font-size:0.85rem; color:var(--text-secondary)">高分（&gt;60）</label>
           <textarea id="high-score-phrases" class="glass" style="width:100%; min-height:60px; padding:8px; border-radius:8px; color:var(--text-primary); border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05)">{{ score_phrases.high | replace('|', '\n') }}</textarea>
-          <button id="save-phrases" class="pill active" style="width:100%; margin-top:12px; padding:12px; text-align:center">{% trans %}Save phrases{% endtrans %}</button>
+          <button id="save-phrases" class="pill active" style="width:100%; margin-top:12px; padding:12px; text-align:center">儲存評語</button>
         </div>
       </details>
 
-      <a id="clear-preferences-link" class="pill" style="border:1px solid var(--danger); color:var(--danger); display:inline-block" href="{{ url_for('preferences.clear_preferences') }}">{% trans %}Clear preferences{% endtrans %}</a>
+      <a id="clear-preferences-link" class="pill" style="border:1px solid var(--danger); color:var(--danger); display:inline-block" href="{{ url_for('preferences.clear_preferences') }}">重設所有設定</a>
     </div>
   </div>
   {% endif %}
@@ -195,12 +195,12 @@
   <!-- Admin card -->
   <div class="accordion-card glass">
     <div class="accordion-header">
-      <span><i class="icon icon-wrench"></i> {% trans %}Admin{% endtrans %}</span>
+      <span><i class="icon icon-wrench"></i> 管理員</span>
       <span class="accordion-chevron"></span>
     </div>
     <div class="accordion-body">
 
-      <h4>{% trans %}System Info{% endtrans %}</h4>
+      <h4>系統資訊</h4>
       <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:16px">
         <div>Platform: {{ platform }}</div>
         <div>OS: {{ os_version }}</div>
@@ -212,26 +212,26 @@
         <div>Memory: <span id="system-memory">...</span></div>
       </div>
 
-      <h4>{% trans %}Actions{% endtrans %}</h4>
+      <h4>操作</h4>
       <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px">
-        <a class="pill" href="{{ url_for('admin.refresh') }}"><i class="icon icon-exchange"></i> {% trans %}Rescan songs{% endtrans %}</a>
-        <a id="update-ytdl-link" class="pill" href="{{ url_for('admin.update_ytdl') }}"><i class="icon icon-down-big"></i> {% trans %}Update yt-dlp{% endtrans %}</a>
+        <a class="pill" href="{{ url_for('admin.refresh') }}"><i class="icon icon-exchange"></i> 重新掃描歌庫</a>
+        <a id="update-ytdl-link" class="pill" href="{{ url_for('admin.update_ytdl') }}"><i class="icon icon-down-big"></i> 更新下載器</a>
       </div>
 
       <div style="display:flex; flex-wrap:wrap; gap:8px">
-        <a id="quit-link" class="pill" style="border:1px solid var(--danger); color:var(--danger)" href="{{ url_for('admin.quit') }}">{% trans %}Quit{% endtrans %}</a>
+        <a id="quit-link" class="pill" style="border:1px solid var(--danger); color:var(--danger)" href="{{ url_for('admin.quit') }}">結束程式</a>
         {% if is_pi or is_linux %}
-        <a id="restart-link" class="pill" style="border:1px solid var(--warning); color:var(--warning)" href="{{ url_for('admin.reboot') }}">{% trans %}Reboot{% endtrans %}</a>
-        <a id="shutdown-link" class="pill" style="border:1px solid var(--danger); color:var(--danger)" href="{{ url_for('admin.shutdown') }}">{% trans %}Shutdown{% endtrans %}</a>
+        <a id="restart-link" class="pill" style="border:1px solid var(--warning); color:var(--warning)" href="{{ url_for('admin.reboot') }}">重新開機</a>
+        <a id="shutdown-link" class="pill" style="border:1px solid var(--danger); color:var(--danger)" href="{{ url_for('admin.shutdown') }}">關機</a>
         {% endif %}
         {% if is_pi %}
-        <a id="expand-link" class="pill" href="{{ url_for('admin.expand_fs') }}">{% trans %}Expand FS{% endtrans %}</a>
+        <a id="expand-link" class="pill" href="{{ url_for('admin.expand_fs') }}">擴充檔案系統</a>
         {% endif %}
       </div>
 
       {% if admin_password != none %}
       <hr style="border-color:rgba(255,255,255,0.08); margin:16px 0">
-      <a class="pill" href="{{ url_for('admin.logout') }}"><i class="icon icon-cancel-circled-1"></i> {% trans %}Log out{% endtrans %}</a>
+      <a class="pill" href="{{ url_for('admin.logout') }}"><i class="icon icon-cancel-circled-1"></i> 登出</a>
       {% endif %}
     </div>
   </div>
@@ -239,12 +239,12 @@
   <!-- Login card for non-admin -->
   <div class="accordion-card glass">
     <div class="accordion-header">
-      <span><i class="icon icon-wrench"></i> {% trans %}Admin{% endtrans %}</span>
+      <span><i class="icon icon-wrench"></i> 管理員</span>
       <span class="accordion-chevron"></span>
     </div>
     <div class="accordion-body">
-      <p class="has-text-grey">{% trans %}Click here to login as admin.{% endtrans %}</p>
-      <a class="pill active" href="{{ url_for('admin.login', next=request.path) }}">{% trans %}Log in{% endtrans %}</a>
+      <p class="has-text-grey">點此登入管理員模式</p>
+      <a class="pill active" href="{{ url_for('admin.login', next=request.path) }}">登入</a>
     </div>
   </div>
   {% endif %}

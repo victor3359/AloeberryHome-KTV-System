@@ -378,9 +378,9 @@
     <div class="mini-player__singer">--</div>
   </div>
   <div class="mini-player__audio-mode" style="display:none">
-    <button class="audio-mode-btn-mini" data-mode="original">{% trans %}Orig{% endtrans %}</button>
-    <button class="audio-mode-btn-mini active" data-mode="instrumental">KTV</button>
-    <button class="audio-mode-btn-mini" data-mode="guide">{% trans %}Guide{% endtrans %}</button>
+    <button class="audio-mode-btn-mini" data-mode="original">原唱</button>
+    <button class="audio-mode-btn-mini active" data-mode="instrumental">伴奏</button>
+    <button class="audio-mode-btn-mini" data-mode="guide">導唱</button>
   </div>
   <div class="mini-player__controls">
     <button id="mini-pause-btn" class="mini-player__btn"><i class="icon-pause"></i></button>
@@ -412,14 +412,7 @@
       <input id="cp-transpose" type="range" min="-12" max="12" value="0" class="control-panel__slider">
     </div>
     {% endif %}
-    <div class="control-panel__slider-group" id="cp-audio-mode-group" style="display:none">
-      <label><i class="icon-volume-up"></i> {% trans %}Audio{% endtrans %}</label>
-      <div class="audio-mode-toggle">
-        <button class="audio-mode-btn active" data-mode="original">{% trans %}Original{% endtrans %}</button>
-        <button class="audio-mode-btn" data-mode="instrumental">{% trans %}Karaoke{% endtrans %}</button>
-        <button class="audio-mode-btn" data-mode="guide">{% trans %}Guide{% endtrans %}</button>
-      </div>
-    </div>
+    <!-- Audio mode controlled via mini player bar buttons (no duplication) -->
   </div>
 </div>
 
