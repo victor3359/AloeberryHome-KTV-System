@@ -209,9 +209,9 @@ class StreamManager:
         )
         t.start()
 
-        # Wait for initial segments to be generated
+        # Wait for initial segments (loudnorm two-pass needs full analysis first)
         stream_uid_str = str(fr.stream_uid)
-        max_retries = 200
+        max_retries = 600  # 60 seconds max (loudnorm is slow on first pass)
         while max_retries > 0:
             if self.ffmpeg_process.poll() is not None:
                 logging.debug("FFmpeg process ended during buffer wait")

@@ -48,8 +48,8 @@ def build_multi_audio_hls_cmd(
         filters += f"atrim=start={-avsync},"
     if is_transposed:
         filters += f"rubberband=pitch={2 ** (semitones / 12)},"
-    if normalize_audio:
-        filters += "loudnorm=i=-16:tp=-1.5:lra=11,"
+    # Skip loudnorm in multi-audio: it requires two-pass analysis per track,
+    # making initial buffering too slow. Demucs output is already normalized.
     filters = filters.rstrip(",")
 
     # 2 audio tracks: original + instrumental (no guide/vocals mixing)
