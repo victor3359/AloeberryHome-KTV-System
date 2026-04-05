@@ -658,7 +658,7 @@ class VocalSeparator:
         return None
 
     def transcribe(self, song_path: str) -> TranscriptionResult:
-        """Run Whisper transcription on the vocals stem for word-level timestamps."""
+        """Run Whisper transcription as a subprocess to avoid GIL contention with Flask."""
         if not WHISPER_AVAILABLE:
             return TranscriptionResult(success=False, error="Whisper is not installed")
 
@@ -667,46 +667,67 @@ class VocalSeparator:
 
         try:
             logging.info("Starting transcription: %s", audio_source)
-            import torch
-            import whisper
-
-            # Force Whisper to CPU so GPU stays free for video playback
-            # (same reasoning as Demucs — GPU can't be throttled per-process)
-            device = "cpu"
-            import warnings
-
-            warnings.filterwarnings("ignore", message=".*Triton.*")
-            warnings.filterwarnings("ignore", message=".*CPU when CUDA.*")
-            warnings.filterwarnings("ignore", message=".*FP16 is not supported.*")
-            torch.set_num_threads(10)  # 10 of 16 cores for fast transcription
-            # Cache model globally to avoid reloading 400MB per song
-            cache_key = f"{self._whisper_model}_{device}"
-            if not hasattr(VocalSeparator, "_whisper_cache"):
-                VocalSeparator._whisper_cache = {}
-            if cache_key not in VocalSeparator._whisper_cache:
-                logging.info(
-                    "Loading Whisper model '%s' on %s (first time)...", self._whisper_model, device
-                )
-                VocalSeparator._whisper_cache[cache_key] = whisper.load_model(
-                    self._whisper_model, device=device
-                )
-            model = VocalSeparator._whisper_cache[cache_key]
-
-            # Detect language from filename to avoid misidentification
             detected_lang = self._detect_language_from_filename(song_path)
-            transcribe_kwargs: dict[str, object] = {
-                "word_timestamps": True,
-                "verbose": False,
-                "condition_on_previous_text": False,
-            }
+
+            # Run Whisper in a subprocess to avoid GIL contention with Flask/gevent.
+            # In-process Whisper with 10 PyTorch threads starved the main thread.
+            import json as _json
+            import tempfile
+
+            output_file = tempfile.mktemp(suffix=".json")
+            script = (
+                "import sys, json, warnings, os\n"
+                "os.environ['OMP_NUM_THREADS'] = '10'\n"
+                "os.environ['MKL_NUM_THREADS'] = '10'\n"
+                "warnings.filterwarnings('ignore')\n"
+                "import torch; torch.set_num_threads(10)\n"
+                "import whisper\n"
+                f"model = whisper.load_model('{self._whisper_model}', device='cpu')\n"
+                f"result = model.transcribe(r'{audio_source}', word_timestamps=True, "
+                f"verbose=False, condition_on_previous_text=False"
+                + (f", language='{detected_lang}'" if detected_lang else "")
+                + ")\n"
+                "segments = []\n"
+                "for seg in result.get('segments', []):\n"
+                "    segments.append({'start': seg['start'], 'end': seg['end'], "
+                "'text': seg['text'], 'words': seg.get('words', [])})\n"
+                f"with open(r'{output_file}', 'w', encoding='utf-8') as f:\n"
+                "    json.dump({'segments': segments, 'language': result.get('language', '')}, f, "
+                "ensure_ascii=False)\n"
+            )
+
             if detected_lang:
-                transcribe_kwargs["language"] = detected_lang
                 logging.info("Language hint from filename: %s", detected_lang)
 
-            result = model.transcribe(audio_source, **transcribe_kwargs)
+            env = {
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+                "OMP_NUM_THREADS": "10",
+                "MKL_NUM_THREADS": "10",
+            }
+            creationflags = 0x00004000 if sys.platform == "win32" else 0
+            proc = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                env=env,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=creationflags,
+            )
+
+            if proc.returncode != 0 or not os.path.exists(output_file):
+                error = proc.stderr[:500] if proc.stderr else "Whisper subprocess failed"
+                logging.error("Whisper failed: %s", error)
+                return TranscriptionResult(success=False, error=error)
+
+            with open(output_file, encoding="utf-8") as f:
+                data = _json.load(f)
+            os.remove(output_file)
 
             segments = []
-            for seg in result.get("segments", []):
+            for seg in data.get("segments", []):
                 segment_data = {
                     "start": seg["start"],
                     "end": seg["end"],
