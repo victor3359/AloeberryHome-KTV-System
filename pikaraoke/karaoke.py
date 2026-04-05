@@ -6,6 +6,7 @@ import logging
 import os
 import socket
 import subprocess
+import threading
 import time
 from typing import Any
 
@@ -244,13 +245,11 @@ class Karaoke:
         self.events.on("song_ended", self.update_now_playing_socket)
         self.events.on("skip_requested", lambda: self.playback_controller.skip(False))
 
-        # Session score history: list of {singer, score, song}
+        # Session state (protected by _session_lock for thread safety)
+        self._session_lock = threading.RLock()
         self.score_history: list[dict] = []
-        # Singers who have queued a song this session
         self.known_singers: set[str] = set()
-        # Session start time (unix timestamp) for elapsed display
         self.session_start: float = time.time()
-        # Play history this session: list of {title, user, user2}
         self.play_history: list[dict] = []
 
         # Persistent cross-session data
@@ -316,15 +315,20 @@ class Karaoke:
 
     def reset_session(self) -> None:
         """Reset all session state for a new KTV session."""
-        self.queue_manager.queue_clear()
-        self.score_history.clear()
-        self.play_history.clear()
-        self.known_singers.clear()
-        self.session_start = time.time()
-        logging.info("Session reset")
+        with self._session_lock:
+            self.queue_manager.queue_clear()
+            self.score_history.clear()
+            self.play_history.clear()
+            self.known_singers.clear()
+            self.session_start = time.time()
+            logging.info("Session reset")
 
     def get_session_summary(self) -> dict:
         """Compute summary statistics for the current session."""
+        with self._session_lock:
+            return self._get_session_summary_locked()
+
+    def _get_session_summary_locked(self) -> dict:
         elapsed = int(time.time() - self.session_start)
         total_songs = len(self.play_history)
         singers = list(self.known_singers)
@@ -621,13 +625,14 @@ class Karaoke:
                     if not song:
                         continue
                     song_title = song.get("title", "")
-                    self.play_history.append(
-                        {
-                            "title": song_title,
-                            "user": song.get("user", ""),
-                            "user2": song.get("user2"),
-                        }
-                    )
+                    with self._session_lock:
+                        self.play_history.append(
+                            {
+                                "title": song_title,
+                                "user": song.get("user", ""),
+                                "user2": song.get("user2"),
+                            }
+                        )
                     if song_title:
                         self.play_stats.increment(song_title)
                     # Auto-default to instrumental if stems exist (KTV standard)

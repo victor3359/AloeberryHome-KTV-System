@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import threading
 import uuid
 from queue import Queue
 from threading import Thread
@@ -61,6 +62,7 @@ class DownloadManager:
         self._youtubedl_proxy = youtubedl_proxy
         self._additional_ytdl_args = additional_ytdl_args
         self.download_queue: Queue = Queue()
+        self._state_lock = threading.RLock()
         self.pending_downloads: list[dict] = []  # Shadow queue for visibility
         self.download_errors: list[dict] = []  # Track failed downloads
         self.active_download: dict | None = None
@@ -79,11 +81,12 @@ class DownloadManager:
         Returns:
             Dict containing 'active' download info and list of 'pending' downloads.
         """
-        return {
-            "active": self.active_download,
-            "pending": self.pending_downloads,
-            "errors": self.download_errors,
-        }
+        with self._state_lock:
+            return {
+                "active": self.active_download,
+                "pending": list(self.pending_downloads),
+                "errors": list(self.download_errors),
+            }
 
     def remove_error(self, error_id: str) -> bool:
         """Remove an error from the list by ID.
@@ -94,9 +97,10 @@ class DownloadManager:
         Returns:
             True if removed, False if not found.
         """
-        initial_len = len(self.download_errors)
-        self.download_errors = [e for e in self.download_errors if e["id"] != error_id]
-        return len(self.download_errors) < initial_len
+        with self._state_lock:
+            initial_len = len(self.download_errors)
+            self.download_errors = [e for e in self.download_errors if e["id"] != error_id]
+            return len(self.download_errors) < initial_len
 
     def queue_download(
         self,

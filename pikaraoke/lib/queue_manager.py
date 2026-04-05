@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import random
+import threading
 from typing import Any, Callable
 
 from flask_babel import _
@@ -28,6 +29,7 @@ class QueueManager:
         get_available_songs: Callable[[], Any] | None = None,
     ) -> None:
         self.queue: list[dict[str, Any]] = []
+        self._lock = threading.RLock()
         self._preferences = preferences
         self._events = events
         self._get_now_playing_user = get_now_playing_user
@@ -36,7 +38,8 @@ class QueueManager:
 
     def is_song_in_queue(self, song_path: str) -> bool:
         """Check if a song is already in the queue."""
-        return any(item["file"] == song_path for item in self.queue)
+        with self._lock:
+            return any(item["file"] == song_path for item in self.queue)
 
     def is_user_limited(self, user: str) -> bool:
         """Check if a user has reached their queue limit."""
@@ -105,6 +108,29 @@ class QueueManager:
         start_position: float = 0,
     ) -> list[bool | str]:
         """Add a song to the queue. Returns [success, message]."""
+        with self._lock:
+            return self._enqueue_locked(
+                song_path,
+                user,
+                semitones,
+                add_to_front,
+                log_action,
+                user2,
+                audio_mode,
+                start_position,
+            )
+
+    def _enqueue_locked(
+        self,
+        song_path,
+        user,
+        semitones,
+        add_to_front,
+        log_action,
+        user2,
+        audio_mode,
+        start_position,
+    ):
         title = self._resolve_title(song_path)
 
         if self.is_song_in_queue(song_path):
@@ -196,15 +222,19 @@ class QueueManager:
 
     def queue_clear(self) -> None:
         """Clear all songs from the queue and skip current song."""
-        # MSG: Message shown after the queue is cleared
-        self._events.emit("notification", _("Clear queue"), "danger")
-        self.queue = []
-        self._events.emit("queue_update")
+        with self._lock:
+            self._events.emit("notification", _("Clear queue"), "danger")
+            self.queue = []
+            self._events.emit("queue_update")
         self._events.emit("now_playing_update")
         self._events.emit("skip_requested")
 
     def reorder(self, old_index: int, new_index: int) -> bool:
         """Move a song from old_index to new_index. Returns False if indices are invalid."""
+        with self._lock:
+            return self._reorder_locked(old_index, new_index)
+
+    def _reorder_locked(self, old_index: int, new_index: int) -> bool:
         if not (0 <= old_index < len(self.queue) and 0 <= new_index < len(self.queue)):
             logging.error(
                 f"Invalid reorder indices: old={old_index}, new={new_index}, queue_len={len(self.queue)}"
@@ -251,15 +281,19 @@ class QueueManager:
 
         Returns None if queue is empty.
         """
-        if not self.queue:
-            return None
-
-        song = self.queue.pop(0)
-        logging.info(f"Popped song from queue: {song['title']}")
-        return song
+        with self._lock:
+            if not self.queue:
+                return None
+            song = self.queue.pop(0)
+            logging.info(f"Popped song from queue: {song['title']}")
+            return song
 
     def queue_edit(self, song_path: str, action: str) -> bool:
         """Move or remove a song in the queue. Action: 'up', 'down', or 'delete'."""
+        with self._lock:
+            return self._queue_edit_locked(song_path, action)
+
+    def _queue_edit_locked(self, song_path: str, action: str) -> bool:
         index = self._find_song_index(song_path)
         if index == -1:
             logging.error("Song not found in queue: " + song_path)

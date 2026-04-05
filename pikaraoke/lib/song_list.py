@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import os
+import threading
 import unicodedata
 from collections.abc import Iterator
 
@@ -38,6 +39,7 @@ class SongList:
             sort_key: Optional function to extract sort key from items.
                       Defaults to lowercase basename.
         """
+        self._lock = threading.RLock()
         self._songs: set[str] = set()
         self._sorted_cache: list[str] | None = None
         self._sort_key = sort_key or (lambda f: self._normalize_sort_key(f))
@@ -65,17 +67,19 @@ class SongList:
 
     def add(self, song_path: str) -> None:
         """Add a song to the list. O(1) average."""
-        if song_path not in self._songs:
-            self._songs.add(song_path)
-            self._invalidate_cache()
+        with self._lock:
+            if song_path not in self._songs:
+                self._songs.add(song_path)
+                self._invalidate_cache()
 
     def remove(self, song_path: str) -> None:
         """Remove a song from the list. O(1) average."""
-        try:
-            self._songs.remove(song_path)
-            self._invalidate_cache()
-        except KeyError:
-            logging.warning(f"Song not found in list: {song_path}")
+        with self._lock:
+            try:
+                self._songs.remove(song_path)
+                self._invalidate_cache()
+            except KeyError:
+                logging.warning(f"Song not found in list: {song_path}")
 
     def discard(self, song_path: str) -> None:
         """Remove a song if present, no error if not. O(1) average."""
@@ -118,14 +122,16 @@ class SongList:
         Returns:
             True if the song was added, False if validation failed.
         """
+        with self._lock:
+            if os.path.exists(song_path) and self.is_valid_song(song_path):
+                self.add(song_path)
+                logging.debug(f"Added song to list: {song_path}")
+                return True
 
-        if os.path.exists(song_path) and self.is_valid_song(song_path):
-            self.add(song_path)
-            logging.debug(f"Added song to list: {song_path}")
-            return True
-
-        logging.debug(f"Song not added to list because it doesn't exist or is invalid: {song_path}")
-        return False
+            logging.debug(
+                f"Song not added to list because it doesn't exist or is invalid: {song_path}"
+            )
+            return False
 
     def rename(self, old_path: str, new_path: str) -> bool:
         """Update a song's path after a file rename.
@@ -168,7 +174,8 @@ class SongList:
                         logging.debug(f"Found song: {filename}")
                         files_found.append(file_path)
 
-        self.update(files_found)
+        with self._lock:
+            self.update(files_found)
         return len(files_found)
 
     def find_and_add(self, directory: str, pattern: str) -> str | None:
@@ -229,7 +236,9 @@ class SongList:
 
     def __iter__(self) -> Iterator[str]:
         """Iterate over songs in sorted order."""
-        return iter(self._ensure_sorted())
+        with self._lock:
+            snapshot = list(self._ensure_sorted())
+        return iter(snapshot)
 
     def __getitem__(self, index: int | slice) -> str | list[str]:
         """Get song(s) by index or slice from sorted list."""

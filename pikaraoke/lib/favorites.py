@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 
 
@@ -15,6 +16,7 @@ class Favorites:
     """Manage per-user favorite songs."""
 
     def __init__(self, data_dir: str) -> None:
+        self._lock = threading.RLock()
         self._path = os.path.join(data_dir, "favorites.json")
         self._data: dict[str, list[str]] = {}
         self._load()
@@ -38,20 +40,21 @@ class Favorites:
 
     def toggle(self, user: str, filename: str) -> bool:
         """Toggle a song as favorite for a user. Returns True if now favorited."""
-        user = user.strip()
-        filename = filename.strip()
-        if not user or not filename:
-            return False
+        with self._lock:
+            user = user.strip()
+            filename = filename.strip()
+            if not user or not filename:
+                return False
 
-        user_favs = self._data.setdefault(user, [])
-        if filename in user_favs:
-            user_favs.remove(filename)
+            user_favs = self._data.setdefault(user, [])
+            if filename in user_favs:
+                user_favs.remove(filename)
+                self._save()
+                return False
+
+            user_favs.append(filename)
             self._save()
-            return False
-
-        user_favs.append(filename)
-        self._save()
-        return True
+            return True
 
     def is_favorite(self, user: str, filename: str) -> bool:
         """Check if a song is in user's favorites."""
@@ -59,8 +62,10 @@ class Favorites:
 
     def get_user_favorites(self, user: str) -> list[str]:
         """Get all favorites for a user."""
-        return list(self._data.get(user.strip(), []))
+        with self._lock:
+            return list(self._data.get(user.strip(), []))
 
     def get_favorites_set(self, user: str) -> set[str]:
         """Get favorites as a set for O(1) lookup."""
-        return set(self._data.get(user.strip(), []))
+        with self._lock:
+            return set(self._data.get(user.strip(), []))
