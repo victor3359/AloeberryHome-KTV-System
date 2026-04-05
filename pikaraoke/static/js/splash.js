@@ -414,7 +414,7 @@ const handleNowPlayingUpdate = (np) => {
         hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, function() {
           window.audioTrackMap = null;
           if (hlsInstance.audioTracks && hlsInstance.audioTracks.length > 1) {
-            window.audioTrackMap = { "original": 0, "instrumental": 1, "guide": 2 };
+            window.audioTrackMap = { "original": 0, "instrumental": 1 };
             console.log("Multi-audio detected: " + hlsInstance.audioTracks.length + " tracks");
             // Default to instrumental (karaoke mode)
             hlsInstance.audioTrack = 1;
@@ -628,6 +628,13 @@ const PREFERENCE_EFFECTS = {
   screensaver_timeout: (v) => {
     screensaverTimeoutSeconds = v;
     PikaraokeConfig.screensaverTimeout = v;
+  },
+  volume: (v) => {
+    const video = getVideoPlayer();
+    if (video) video.volume = v;
+  },
+  hide_notifications: (v) => {
+    PikaraokeConfig.hideNotifications = v;
   },
   splash_theme: (v) => {
     document.body.className = document.body.className.replace(/theme-\S+/g, "");

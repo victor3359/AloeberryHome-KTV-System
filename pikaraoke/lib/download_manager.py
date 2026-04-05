@@ -297,14 +297,8 @@ class DownloadManager:
                 self.active_download["progress"] = 100
                 self.active_download["status"] = "complete"
 
-            if enqueue:
-                # MSG: Message shown after the download is completed and queued
-                self._events.emit(
-                    "notification", _("Downloaded and queued: %s") % displayed_title, "success"
-                )
-            else:
-                # MSG: Message shown after the download is completed but not queued
-                self._events.emit("notification", _("Downloaded: %s") % displayed_title, "success")
+            # MSG: Message shown after the download is completed
+            self._events.emit("notification", _("Downloaded: %s") % displayed_title, "success")
 
             # After download, find the file path by ID
             song_path = None
@@ -322,8 +316,11 @@ class DownloadManager:
                     f"Could not find downloaded song in {self._download_path} matching ID: {video_id}"
                 )
 
-            # Post-download: run vocal separation + transcription in background
+            # Post-download: run vocal separation + transcription BEFORE queueing
             if song_is_valid and song_path and self._vocal_separator:
+                self._events.emit(
+                    "notification", _("Processing audio: %s") % displayed_title, "info"
+                )
                 try:
                     self._vocal_separator.process(song_path, title=displayed_title)
                 except Exception as e:

@@ -131,9 +131,7 @@ def build_ytdl_download_command(
     """
     dl_path = os.path.join(download_path, "%(title)s---%(id)s.%(ext)s")
     file_quality = (
-        "bestvideo[ext!=webm][height<=1080]+bestaudio[ext!=webm]/best[ext!=webm]"
-        if high_quality
-        else "mp4"
+        "bestvideo[ext!=webm]+bestaudio[ext!=webm]/best[ext!=webm]" if high_quality else "mp4"
     )
     args = [
         "-f",

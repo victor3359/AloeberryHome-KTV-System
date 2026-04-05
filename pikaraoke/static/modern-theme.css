@@ -2608,6 +2608,18 @@ a.dropdown-item.is-active {
     border-color: transparent;
 }
 
+/* Fix dark theme dropdown readability */
+select,
+select option {
+    background: #1a1a2e !important;
+    color: #f1f5f9 !important;
+}
+
+select option:checked {
+    background: #7c3aed !important;
+    color: white !important;
+}
+
 /* ==========================================================================
    Song Picker Page (sp- prefix)
    ========================================================================== */

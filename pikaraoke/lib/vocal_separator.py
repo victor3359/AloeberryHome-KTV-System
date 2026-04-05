@@ -112,43 +112,59 @@ def generate_karaoke_ass(segments: list[dict], title: str = "") -> str:
     header = f"""[Script Info]
 Title: {title}
 ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: 3840
+PlayResY: 2160
 WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,Arial,88,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,5,3,2,40,40,70,1
+Style: Karaoke,Arial,168,&H0000D7FF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,8,5,2,80,80,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = [header.strip()]
 
+    # Pre-display offset: show lyrics 1.5s before they start singing
+    pre_display = 1.5
+
     for segment in segments:
         words = segment.get("words", [])
         if not words:
-            # Fallback: treat entire segment text as one block
             text = segment.get("text", "").strip()
             if not text:
                 continue
             start = segment.get("start", 0.0)
             end = segment.get("end", start + 1.0)
             duration_cs = max(int((end - start) * 100), 10)
-            ass_start = _format_ass_time(start)
+            # Show early with blank \kf pad, then real fill starts at correct time
+            early_start = max(0, start - pre_display)
+            pad_cs = int((start - early_start) * 100)
+            ass_start = _format_ass_time(early_start)
             ass_end = _format_ass_time(end)
-            lines.append(
-                f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{{\\kf{duration_cs}}}{text}"
-            )
+            if pad_cs > 0:
+                lines.append(
+                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,"
+                    f"{{\\kf{pad_cs}}}{{\\kf{duration_cs}}}{text}"
+                )
+            else:
+                lines.append(
+                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{{\\kf{duration_cs}}}{text}"
+                )
             continue
 
         # Build karaoke line from word-level timestamps
         seg_start = words[0]["start"]
         seg_end = words[-1]["end"]
-        ass_start = _format_ass_time(seg_start)
-        ass_end = _format_ass_time(seg_end + 0.5)  # Small buffer
+        early_start = max(0, seg_start - pre_display)
+        pad_cs = int((seg_start - early_start) * 100)
+        ass_start = _format_ass_time(early_start)
+        ass_end = _format_ass_time(seg_end + 0.5)
 
         karaoke_parts = []
+        # Add blank pad at the beginning so lyrics appear early but fill starts on time
+        if pad_cs > 0:
+            karaoke_parts.append(f"{{\\kf{pad_cs}}}")
         for word_info in words:
             word = word_info.get("word", "").strip()
             if not word:
@@ -156,8 +172,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             w_start = word_info.get("start", 0.0)
             w_end = word_info.get("end", w_start + 0.1)
             duration_cs = max(int((w_end - w_start) * 100), 10)
-            # Prepend space inside the tag (not between tags) for smooth \kf fill
-            prefix = " " if karaoke_parts else ""
+            prefix = " " if len(karaoke_parts) > (1 if pad_cs > 0 else 0) else ""
             karaoke_parts.append(f"{{\\kf{duration_cs}}}{prefix}{word}")
 
         if karaoke_parts:
@@ -179,7 +194,7 @@ class VocalSeparator:
         events: EventSystem,
         download_path: str,
         device: str = "cuda",
-        whisper_model: str = "medium",
+        whisper_model: str = "large",
     ) -> None:
         self._events = events
         self._download_path = download_path
@@ -317,6 +332,20 @@ class VocalSeparator:
         except OSError as e:
             return SeparationResult(success=False, error=str(e))
 
+    @staticmethod
+    def _detect_language_from_filename(song_path: str) -> str | None:
+        """Detect language from filename Unicode characters."""
+        import re
+
+        name = os.path.basename(song_path)
+        if re.search(r"[\u3040-\u30ff]", name):
+            return "ja"
+        if re.search(r"[\uac00-\ud7af]", name):
+            return "ko"
+        if re.search(r"[\u4e00-\u9fff]", name):
+            return "zh"
+        return None
+
     def transcribe(self, song_path: str) -> TranscriptionResult:
         """Run Whisper transcription on the vocals stem for word-level timestamps."""
         if not WHISPER_AVAILABLE:
@@ -335,11 +364,18 @@ class VocalSeparator:
                 logging.warning("CUDA not available for Whisper, falling back to CPU")
                 device = "cpu"
             model = whisper.load_model(self._whisper_model, device=device)
-            result = model.transcribe(
-                audio_source,
-                word_timestamps=True,
-                verbose=False,
-            )
+
+            # Detect language from filename to avoid misidentification
+            detected_lang = self._detect_language_from_filename(song_path)
+            transcribe_kwargs: dict[str, object] = {
+                "word_timestamps": True,
+                "verbose": False,
+            }
+            if detected_lang:
+                transcribe_kwargs["language"] = detected_lang
+                logging.info("Language hint from filename: %s", detected_lang)
+
+            result = model.transcribe(audio_source, **transcribe_kwargs)
 
             segments = []
             for seg in result.get("segments", []):
