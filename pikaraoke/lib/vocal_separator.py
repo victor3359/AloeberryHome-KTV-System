@@ -380,11 +380,15 @@ class VocalSeparator:
 
             # First run downloads model (~80MB), allow extra time
             logging.info("Running demucs (device=%s)...", device)
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=900,
+                env=env,
+                encoding="utf-8",
+                errors="replace",
             )
 
             if result.returncode != 0:
