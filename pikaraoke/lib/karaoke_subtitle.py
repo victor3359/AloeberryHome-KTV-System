@@ -214,7 +214,7 @@ def _build_kf_text(
     return "".join(parts), seg_start, seg_end
 
 
-def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = -0.3) -> str:
+def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = -0.7) -> str:
     """Generate ASS subtitle with two-line KTV layout.
 
     Active line: cream white text fills to warm amber word by word.
