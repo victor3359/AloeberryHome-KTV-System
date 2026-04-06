@@ -23,7 +23,7 @@ class SongDatabase:
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._db_path)
+        conn = sqlite3.connect(self._db_path, timeout=10)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         return conn
@@ -95,6 +95,8 @@ class SongDatabase:
         """Update a song's file_path in the database after a rename."""
         with self._lock:
             conn = self._get_conn()
+            # Remove any stale record at the target path to avoid UNIQUE conflict
+            conn.execute("DELETE FROM songs WHERE file_path=?", (new_path,))
             conn.execute(
                 "UPDATE songs SET file_path = ? WHERE file_path = ?",
                 (new_path, old_path),

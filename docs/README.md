@@ -7,9 +7,9 @@ A professional-grade home KTV system that transforms YouTube official MVs into f
 ## Key Features
 
 - **AI Vocal Separation**: Download any official MV, Demucs (GPU) automatically separates vocals from instrumental
-- **Auto Karaoke Lyrics**: Whisper AI generates word-by-word scrolling lyrics with color-changing animation
+- **Auto Karaoke Lyrics**: Online-first lyrics (Musixmatch/Lrclib) + Whisper word timestamps, KTV two-line alternating layout with per-character color fill
 - **Instant Audio Switching**: Toggle between Original/KTV (instrumental) modes with zero latency via HLS multi-audio
-- **Real Pitch Shift**: AudioWorklet-based key change (+-12 semitones) without changing tempo
+- **Real Pitch Shift**: SoundTouchJS AudioWorklet key change (+-12 semitones) without changing tempo
 - **Microphone Scoring**: Real-time pitch detection (YIN algorithm) with visual feedback and accuracy-based scoring
 - **Modern UI**: Dark neon glassmorphism theme, bottom 3-tab navigation (Songs/Queue/More), mobile-first touch design
 - **Full Chinese UI**: All buttons, labels, notifications, and settings in Traditional Chinese
@@ -65,7 +65,13 @@ Scan the QR code on the TV screen with your phone to start singing!
 Download (YouTube)
   -> Demucs GPU (vocal/instrumental separation, ~30s)
   -> Whisper CPU (word-level lyrics transcription, ~60s)
-  -> ASS karaoke subtitle generation (with \kf color animation)
+  -> Online lyrics search (Musixmatch/Lrclib via syncedlyrics)
+  -> Global LRC-MV offset correction (album vs MV timing)
+  -> Word timeline alignment (online text + Whisper word timestamps)
+  -> Hallucination filtering (credit lines, noise, repetitions)
+  -> OpenCC s2twp (Simplified -> Taiwan Traditional Chinese)
+  -> ASS karaoke subtitle (two-line KTV layout, per-char \kf fill)
+  -> Reference pitch extraction (YIN algorithm)
   -> Auto song name normalization (regex_tidy)
   -> SQLite metadata database update
   -> Enqueue for playback
@@ -73,8 +79,8 @@ Download (YouTube)
 Playback:
   -> FFmpeg HLS multi-audio (original + instrumental tracks)
   -> HLS.js in browser with instant audio track switching
-  -> SubtitlesOctopus renders karaoke lyrics (60fps, 4K support)
-  -> AudioWorklet pitch shift (no tempo change)
+  -> SubtitlesOctopus renders two-line KTV subtitles (60fps, 4K)
+  -> SoundTouchJS AudioWorklet pitch shift (no tempo change)
   -> Microphone pitch scoring (YIN algorithm, real-time feedback)
 ```
 
@@ -84,8 +90,12 @@ Playback:
 |-------|--------|--------|----------------|
 | Vocal Separation | Demucs htdemucs | CUDA GPU | ~30s |
 | Lyrics Transcription | faster-whisper / openai-whisper | CPU (subprocess) | ~60s |
-| Online Lyrics Correction | syncedlyrics (Lrclib/Musixmatch) | Network | ~2s |
-| Simplified -> Traditional Chinese | OpenCC (s2t) | CPU | \<1s |
+| Online Lyrics Search | syncedlyrics (Musixmatch/Lrclib) | Network | ~2s |
+| LRC-MV Offset Correction | Median text-similarity matching | CPU | \<1s |
+| Word Timeline Alignment | Online text + Whisper word timestamps | CPU | \<1s |
+| Hallucination Filtering | 49 keywords + 4 regex patterns | CPU | \<1s |
+| Chinese Conversion | OpenCC (s2twp, Taiwan Traditional) | CPU | \<1s |
+| ASS Subtitle Generation | Two-line KTV layout with \kf per-char fill | CPU | \<1s |
 | Reference Pitch Extraction | YIN algorithm | CPU (subprocess) | ~30s |
 
 ## Configuration
@@ -129,10 +139,10 @@ uv run pre-commit run --config code_quality/.pre-commit-config.yaml --all-files
 
 ## Project Stats
 
-- **70+ commits** across Round 2 and Round 3 development
-- **630 tests** passing
-- **50+ files** modified/created
-- **8,000+ lines** of new code
+- **120+ commits** across Round 2, Round 3, and lyrics optimization
+- **750 tests** passing
+- **60+ files** modified/created
+- **10,000+ lines** of new code
 - **CI**: 8/8 checks green (unit tests, code quality, smoke tests, Docker builds)
 
 ## Credits
@@ -141,9 +151,10 @@ uv run pre-commit run --config code_quality/.pre-commit-config.yaml --all-files
 - **AI Enhancement**: Claude Opus 4.6 (Anthropic)
 - **Vocal Separation**: [Demucs](https://github.com/facebookresearch/demucs) by Meta Research
 - **Speech Recognition**: [Whisper](https://github.com/openai/whisper) / [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- **Pitch Shift**: [SoundTouchJS](https://github.com/cutterbl/SoundTouchJS) AudioWorklet
 - **Subtitle Rendering**: [SubtitlesOctopus](https://github.com/libass/JavascriptSubtitlesOctopus)
-- **Traditional Chinese**: [OpenCC](https://github.com/BYVoid/OpenCC)
-- **Online Lyrics**: [syncedlyrics](https://github.com/rtcq/syncedlyrics)
+- **Traditional Chinese**: [OpenCC](https://github.com/BYVoid/OpenCC) (s2twp)
+- **Online Lyrics**: [syncedlyrics](https://github.com/rtcq/syncedlyrics) (Musixmatch/Lrclib)
 
 ## License
 

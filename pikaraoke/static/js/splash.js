@@ -491,27 +491,7 @@ const handleNowPlayingUpdate = (np) => {
 
     $("#video-container").show();
 
-    video.play().then(() => {
-      // Pre-initialize SoundTouch AudioWorklet to avoid first-use latency
-      if (!window._pitchShiftCtx && !_pitchShiftInitializing) {
-        _pitchShiftInitializing = true;
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        ctx.audioWorklet.addModule("/static/js/soundtouch-worklet.js").then(() => {
-          const source = ctx.createMediaElementSource(video);
-          const node = new AudioWorkletNode(ctx, "soundtouch-processor");
-          source.connect(node);
-          node.connect(ctx.destination);
-          window._pitchShiftCtx = ctx;
-          window._pitchShiftNode = node;
-          _pitchShiftInitializing = false;
-          console.log("SoundTouch AudioWorklet pre-initialized");
-        }).catch(e => {
-          console.warn("SoundTouch pre-init failed:", e);
-          ctx.close().catch(() => {});
-          _pitchShiftInitializing = false;
-        });
-      }
-    }).catch(err => {
+    video.play().catch(err => {
       console.error('Play failed:', err);
       setTimeout(() => video.play(), 1000);
     });

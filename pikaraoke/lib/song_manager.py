@@ -58,7 +58,7 @@ class SongManager:
         """Return paths to companion files that exist alongside a song."""
         base = os.path.splitext(song_path)[0]
         companions = []
-        for suffix in (".cdg", ".ass", "_karaoke.ass", "_vocals.mp3", "_instrumental.mp3"):
+        for suffix in (".cdg", ".ass", "_karaoke.ass", "_vocals.mp3", "_instrumental.mp3", "_pitch.json"):
             path = base + suffix
             if os.path.exists(path):
                 companions.append(path)
