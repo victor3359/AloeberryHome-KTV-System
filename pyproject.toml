@@ -26,13 +26,13 @@ dependencies = [
   "gevent>=24.11.1",
   "syncedlyrics>=1.0.1",
   "opencc-python-reimplemented>=0.1.7",
-  "faster-whisper>=1.2.1",
 ]
 
 [project.optional-dependencies]
 ai = [
   "demucs>=4.0.1",
   "openai-whisper>=20250625",
+  "faster-whisper>=1.2.1",
   "torch>=2.6.0",
   "torchaudio>=2.6.0",
 ]
