@@ -422,21 +422,28 @@ class VocalSeparator:
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
                     self._events.emit("processing_progress", {"stage": "歌詞校對中", "percent": 85})
-                    segments = _filter_whisper_hallucinations(trans_result.segments)
+                    raw_segments = trans_result.segments
 
                     # Online lyrics: prefer as primary text, fallback to typo correction
                     search_title = title or os.path.basename(song_path)
                     online_segments = _search_online_lyrics(search_title)
                     if online_segments:
+                        # Use UNFILTERED Whisper (all timestamps) for alignment
                         aligned = align_online_with_whisper_timing(
-                            online_segments, segments, language or ""
+                            online_segments, raw_segments, language or ""
                         )
                         if aligned:
-                            segments = aligned
+                            # Aligned text is from online lyrics; filter credit lines
+                            segments = _filter_whisper_hallucinations(aligned)
                         else:
+                            # Alignment failed; filter Whisper then correct typos
+                            segments = _filter_whisper_hallucinations(raw_segments)
                             segments = _correct_typos_with_online_lyrics(
                                 segments, online_segments
                             )
+                    else:
+                        # No online lyrics; filter Whisper only
+                        segments = _filter_whisper_hallucinations(raw_segments)
 
                     self._events.emit("processing_progress", {"stage": "產生字幕", "percent": 95})
                     ass_content = generate_karaoke_ass(segments, title)
