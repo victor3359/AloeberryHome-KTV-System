@@ -1,10 +1,18 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working on PiKaraoke.
+Guidance for Claude Code when working on AloeberryHome KTV System.
 
 ## Project Overview
 
-PiKaraoke is a karaoke system for Raspberry Pi, Windows, macOS, and Linux. Web interface for YouTube song search, queuing, and playback with pitch shifting and streaming.
+AloeberryHome KTV System is a professional-grade home KTV system based on PiKaraoke. It transforms YouTube official MVs into karaoke experiences with AI-powered vocal separation (Demucs GPU), auto-generated scrolling lyrics (Whisper), instant Original/KTV audio switching (HLS multi-audio), real pitch shift (AudioWorklet), and microphone-based singing scoring (YIN algorithm). Runs on Windows, macOS, Linux, and Raspberry Pi.
+
+### Key Architecture
+
+- **AI Pipeline**: Download -> Demucs (GPU subprocess) -> Whisper (CPU subprocess) -> ASS karaoke subtitles -> SQLite metadata
+- **Playback**: FFmpeg HLS multi-audio -> HLS.js -> SubtitlesOctopus -> AudioWorklet pitch shift
+- **Concurrency**: RLock on 7 modules (QueueManager, PlaybackController, PlayStats, Favorites, SongList, DownloadManager, Karaoke session)
+- **Subprocess isolation**: Demucs and Whisper both run as separate Python processes to avoid GIL contention with Flask/gevent
+- **Companion files**: Songs have `_vocals.mp3`, `_instrumental.mp3`, `_karaoke.ass`, `_pitch.json` companions
 
 ## Core Principles
 
@@ -70,7 +78,7 @@ uv run pre-commit run --config code_quality/.pre-commit-config.yaml --all-files
 
 Tools: Black (100 char), isort, pycln, pylint, mdformat.
 
-Never commit to `master` directly.
+Never commit to `main` directly.
 
 ## Pull Requests
 
