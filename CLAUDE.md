@@ -8,10 +8,12 @@ AloeberryHome KTV System is a professional-grade home KTV system based on PiKara
 
 ### Key Architecture
 
-- **AI Pipeline**: Download -> Demucs (GPU subprocess) -> Whisper (CPU subprocess) -> ASS karaoke subtitles -> SQLite metadata
-- **Playback**: FFmpeg HLS multi-audio -> HLS.js -> SubtitlesOctopus -> AudioWorklet pitch shift
+- **AI Pipeline**: Download -> Demucs (GPU subprocess) -> Whisper (CPU subprocess) -> Online lyrics alignment (word timeline) -> ASS two-line KTV subtitles -> SQLite metadata
+- **Lyrics Pipeline**: Online lyrics (Musixmatch/Lrclib) provide text, Whisper provides per-word timestamps, global LRC-MV offset correction, hallucination filtering, OpenCC s2twp for Taiwan Traditional Chinese
+- **Playback**: FFmpeg HLS multi-audio -> HLS.js -> SubtitlesOctopus -> SoundTouchJS AudioWorklet pitch shift
 - **Concurrency**: RLock on 7 modules (QueueManager, PlaybackController, PlayStats, Favorites, SongList, DownloadManager, Karaoke session)
 - **Subprocess isolation**: Demucs and Whisper both run as separate Python processes to avoid GIL contention with Flask/gevent
+- **Modular lyrics**: `vocal_separator.py` (orchestration), `karaoke_subtitle.py` (ASS generation), `lyrics_corrector.py` (online alignment)
 - **Companion files**: Songs have `_vocals.mp3`, `_instrumental.mp3`, `_karaoke.ass`, `_pitch.json` companions
 
 ## Core Principles
