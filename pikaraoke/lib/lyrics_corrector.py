@@ -285,9 +285,11 @@ def align_online_with_whisper_timing(
             word_cursor += 1
 
         # Collect words within this line's time range
+        # Cap at 10s to prevent long gaps (interludes) from consuming next line's words
+        collect_end = min(o_end + 1.0, o_start + 10.0)
         line_words: list[dict] = []
         scan = word_cursor
-        while scan < len(all_words) and all_words[scan]["start"] <= o_end + 1.0:
+        while scan < len(all_words) and all_words[scan]["start"] <= collect_end:
             line_words.append(all_words[scan])
             scan += 1
 
