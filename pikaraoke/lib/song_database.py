@@ -86,6 +86,21 @@ class SongDatabase:
             conn.commit()
             conn.close()
 
+    def rename_song(self, old_path: str, new_path: str) -> None:
+        """Update a song's file_path in the database after a rename."""
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                "UPDATE songs SET file_path = ? WHERE file_path = ?",
+                (new_path, old_path),
+            )
+            conn.execute(
+                "UPDATE favorites SET file_path = ? WHERE file_path = ?",
+                (new_path, old_path),
+            )
+            conn.commit()
+            conn.close()
+
     def get_song(self, file_path: str) -> dict | None:
         """Get a song's metadata."""
         with self._lock:

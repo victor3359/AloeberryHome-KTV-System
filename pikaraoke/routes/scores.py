@@ -137,6 +137,19 @@ def library_recommend():
     return jsonify(k.song_db.get_recommendations(song))
 
 
+@scores_bp.get("/pitch_data/<path:song_path>")
+def get_pitch_data(song_path):
+    """Get the reference pitch curve for a song (for singing scoring)."""
+    import os
+
+    base = os.path.splitext(song_path)[0]
+    pitch_file = base + "_pitch.json"
+    if os.path.exists(pitch_file):
+        with open(pitch_file, encoding="utf-8") as f:
+            return f.read(), 200, {"Content-Type": "application/json"}
+    return jsonify([]), 404
+
+
 @scores_bp.post("/reprocess")
 def reprocess_song():
     """Delete stems and lyrics for a song, then re-run vocal separation + transcription."""

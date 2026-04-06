@@ -125,11 +125,32 @@ const hideVideo = () => {
 }
 
 const endSong = async (reason = null, showScore = false) => {
+  // Stop mic scoring
+  if (window._pitchAnalyzer) {
+    window._pitchAnalyzer.stop();
+    window._pitchAnalyzer = null;
+  }
+  if (window._pitchMeter) {
+    window._pitchMeter.hide();
+  }
+
   if (showScore && !PikaraokeConfig.disableScore) {
     const singer = nowPlaying.now_playing_user;
     const song = nowPlaying.now_playing;
     isScoreShown = true;
-    const scoreValue = await startScore("/static/");
+
+    // Use mic-based score if available, otherwise random
+    let scoreValue;
+    if (window._pitchMeter && window._pitchMeter.totalFrames > 10) {
+      scoreValue = window._pitchMeter.getScore();
+      window._pitchMeter.reset();
+    }
+    if (scoreValue === undefined) {
+      scoreValue = await startScore("/static/");
+    } else {
+      // Show the calculated score with the existing score animation
+      await startScore("/static/", scoreValue);
+    }
     isScoreShown = false;
     if (singer && scoreValue !== undefined) {
       $.post("/record_score", { singer, score: scoreValue, song });
@@ -451,9 +472,13 @@ const handleNowPlayingUpdate = (np) => {
 
     video.play().catch(err => {
       console.error('Play failed:', err);
-      // Retry once if it was an autoplay block
       setTimeout(() => video.play(), 1000);
     });
+
+    // Initialize mic-based pitch scoring (if not disabled)
+    if (!PikaraokeConfig.disableScore && typeof PitchAnalyzer !== "undefined") {
+      _initMicScoring(np.now_playing_filename || "");
+    }
 
     if (np.now_playing_position && isMediaPlaying(video)) {
       if (Math.abs(video.currentTime - np.now_playing_position) > 2) {
@@ -666,6 +691,74 @@ const applyPreferencesReset = (defaults) => {
   Object.entries(defaults).forEach(([key, value]) => applyPreferenceUpdate({ key, value }));
 };
 
+// Microphone-based pitch scoring
+async function _initMicScoring(songFilePath) {
+  try {
+    // Request mic permission
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false }
+    });
+
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    window._pitchAnalyzer = new PitchAnalyzer(ctx, stream);
+
+    // Initialize pitch meter UI
+    const container = document.getElementById("pitch-meter-container");
+    if (container) {
+      window._pitchMeter = new PitchMeter(container);
+      window._pitchMeter.reset();
+      window._pitchMeter.show();
+    }
+
+    // Load reference pitch curve
+    window._referencePitch = [];
+    if (songFilePath) {
+      try {
+        const resp = await fetch("/pitch_data/" + encodeURIComponent(songFilePath));
+        if (resp.ok) {
+          window._referencePitch = await resp.json();
+          console.log("Reference pitch loaded:", window._referencePitch.length, "points");
+        }
+      } catch (e) {
+        console.log("No reference pitch available");
+      }
+    }
+
+    // Start real-time analysis
+    window._pitchAnalyzer.start((pitch, confidence) => {
+      if (!window._pitchMeter) return;
+      const video = getVideoPlayer();
+      if (!video || video.paused) return;
+
+      // Find reference pitch at current time
+      const currentTime = video.currentTime;
+      let refPitch = 0;
+      if (window._referencePitch.length > 0) {
+        // Binary search for closest time
+        let lo = 0, hi = window._referencePitch.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (window._referencePitch[mid].time < currentTime) lo = mid + 1;
+          else hi = mid;
+        }
+        if (lo < window._referencePitch.length) {
+          const ref = window._referencePitch[lo];
+          if (Math.abs(ref.time - currentTime) < 0.1 && ref.confidence > 0.3) {
+            refPitch = ref.pitch;
+          }
+        }
+      }
+
+      window._pitchMeter.update(pitch, refPitch, confidence);
+    });
+
+    console.log("Mic scoring initialized");
+  } catch (e) {
+    console.log("Mic scoring unavailable:", e.message);
+    // Silently fail — random scoring will be used as fallback
+  }
+}
+
 const setupSocketEvents = () => {
   socket.on('connect', () => {
     console.log('Socket connected');
@@ -766,21 +859,35 @@ const setupSocketEvents = () => {
     $("#leaderboard-screen").fadeOut(400);
   });
 
-  // Client-side pitch shift (instant, no re-encoding)
-  socket.on("pitch_shift", (semitones) => {
+  // Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change)
+  socket.on("pitch_shift", async (semitones) => {
     const video = getVideoPlayer();
     if (!video) return;
-    // Use playbackRate to shift pitch. preservesPitch=false makes rate change also change pitch.
-    // For pure pitch shift without tempo change, we'd need a WASM rubberband.
-    // This approximation is acceptable for small adjustments (+-3 semitones).
-    if (semitones === 0) {
-      video.playbackRate = 1.0;
-      video.preservesPitch = true;
-    } else {
-      video.preservesPitch = false;
-      video.playbackRate = Math.pow(2, semitones / 12);
+
+    // Initialize audio context and SoundTouch worklet on first use
+    if (!window._pitchShiftCtx) {
+      try {
+        window._pitchShiftCtx = new (window.AudioContext || window.webkitAudioContext)();
+        await window._pitchShiftCtx.audioWorklet.addModule("/static/js/soundtouch-worklet.js");
+        const source = window._pitchShiftCtx.createMediaElementSource(video);
+        window._pitchShiftNode = new AudioWorkletNode(window._pitchShiftCtx, "soundtouch-processor");
+        source.connect(window._pitchShiftNode);
+        window._pitchShiftNode.connect(window._pitchShiftCtx.destination);
+        console.log("SoundTouch AudioWorklet initialized");
+      } catch (e) {
+        console.warn("SoundTouch AudioWorklet failed:", e);
+        return;
+      }
     }
-    console.log("Pitch shift: " + semitones + " semitones, rate=" + video.playbackRate.toFixed(3));
+
+    // Resume context if suspended (requires user interaction)
+    if (window._pitchShiftCtx.state === "suspended") {
+      await window._pitchShiftCtx.resume();
+    }
+
+    // Set pitch shift via AudioParam (no tempo change)
+    window._pitchShiftNode.parameters.get("pitchSemitones").value = semitones;
+    console.log("Pitch shift: " + semitones + " semitones (SoundTouch, no tempo change)");
   });
 
   // Instant audio track switching (multi-audio HLS)

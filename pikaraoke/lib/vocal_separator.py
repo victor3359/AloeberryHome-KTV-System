@@ -846,6 +846,18 @@ class VocalSeparator:
                     with open(ass_path, "w", encoding="utf-8") as f:
                         f.write(ass_content)
                     logging.info("Karaoke ASS generated: %s", ass_path)
+
+                    # Step 3: Extract reference pitch curve for scoring
+                    self._events.emit("processing_progress", {"stage": "提取參考音高", "percent": 96})
+                    try:
+                        from pikaraoke.lib.pitch_extractor import extract_pitch
+
+                        vocals_for_pitch, _ = _stem_paths_for(song_path)
+                        if os.path.exists(vocals_for_pitch):
+                            extract_pitch(vocals_for_pitch)
+                    except Exception as e:
+                        logging.warning("Pitch extraction failed: %s", e)
+
                     self._events.emit("processing_progress", {"stage": "處理完成", "percent": 100})
                 else:
                     logging.warning(

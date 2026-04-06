@@ -1,138 +1,150 @@
-# PiKaraoke
+# AloeberryHome KTV System
 
-<img width="588" height="339" alt="Image" src="https://i.ibb.co/Z6MTM4wt/pikaraoke-readme.png" />
+> Based on [PiKaraoke](https://github.com/vicwomg/pikaraoke) — enhanced with AI vocal separation, auto-generated karaoke lyrics, and a modern KTV experience.
 
-PiKaraoke is a cross-platform karaoke server that brings the professional "KTV" experience to your home. It transforms your computer or Raspberry Pi into a dedicated karaoke station with a full-screen player and an instant web interface. Guests can join by simply scanning a QR code—no app downloads required—to browse your local library, manage the queue, and access countless karaoke hits from YouTube.
+A professional-grade home KTV system that transforms YouTube official MVs into fully-featured karaoke experiences with AI-powered vocal separation, real-time scrolling lyrics, and instant audio track switching.
 
-- 📱 Instant Mobile Remote: Search and queue songs from any smartphone—just scan and sing.
-- 📺 Dedicated Player: High-performance splash screen that can be opened on any web browser for a true karaoke room feel.
-- 🌐 YouTube & Local Media: Play your own files or access more from the web.
-- 🎹 Live Pitch Shifting: Adjust the key of any song to match your vocal range.
-- 🛠️ Admin Control: Manage the queue and settings via a password-protected admin mode.
-- 🎯 Hyper-accurate vocal performance scoring system: (not really, it's random. But kind of fun!)
-- 🐧 Lightweight & Versatile: Runs anywhere from a basic Raspberry Pi to a high-end PC.
+## Key Features
 
-Love PiKaraoke? This project is independently maintained and free for everyone to enjoy. If PiKaraoke has made your parties better and you'd like to help keep the project alive and growing, feel free to [buy me a coffee](https://www.buymeacoffee.com/vicwomg)! <br/><br/>
-<a href="https://www.buymeacoffee.com/vicwomg" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: 41px !important;width: 174px !important;box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;-webkit-box-shadow: 0px 3px 2px 0px rgba(190, 190, 190, 0.5) !important;" ></a>
+- **AI Vocal Separation**: Download any official MV, Demucs (GPU) automatically separates vocals from instrumental
+- **Auto Karaoke Lyrics**: Whisper AI generates word-by-word scrolling lyrics with color-changing animation
+- **Instant Audio Switching**: Toggle between Original/KTV (instrumental) modes with zero latency via HLS multi-audio
+- **Real Pitch Shift**: AudioWorklet-based key change (+-12 semitones) without changing tempo
+- **Microphone Scoring**: Real-time pitch detection (YIN algorithm) with visual feedback and accuracy-based scoring
+- **Modern UI**: Dark neon glassmorphism theme, bottom 3-tab navigation (Songs/Queue/More), mobile-first touch design
+- **Full Chinese UI**: All buttons, labels, notifications, and settings in Traditional Chinese
+- **Song Library Management**: SQLite database with artist/title metadata, YouTube thumbnails, play counts, favorites
+- **Song Recommendations**: AI-powered suggestions based on artist, language, and play history
+- **Multi-Client Sync**: Multiple phones can connect via QR code, all synced in real-time via WebSocket
+- **Fair Queue**: Nagle fair queuing algorithm ensures singers take turns
+- **Session Management**: One-click session reset with KTV Wrapped summary screen
 
-[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-green.svg)](https://conventionalcommits.org)
+## System Requirements
 
-## Table of Contents
-
-- [Supported Devices / OS / Platforms](#supported-devices--os--platforms)
-- [Quick Install](#quick-install)
-- [Manual Installation](#manual-installation)
-- [Usage](#usage)
-- [Docker](#docker-instructions)
-- [Screenshots](#screenshots)
-- [Developing pikaraoke](#developing-pikaraoke)
-- [Troubleshooting](#troubleshooting)
-
-## Supported Devices / OS / Platforms
-
-- OSX
-- Windows
-- Linux
-- Raspberry Pi 4 or higher (Pi3 works ok with overclocking)
+- **OS**: Windows 10/11, macOS, Linux, Raspberry Pi
+- **Python**: 3.10+
+- **FFmpeg**: Required (with lib-rubberband recommended)
+- **GPU** (optional): NVIDIA GPU with CUDA for faster Demucs processing
+- **Browser**: Chrome/Edge recommended for full feature support
 
 ## Quick Install
 
-For a streamlined installation that handles all dependencies (uv, ffmpeg, deno) and installs PiKaraoke, run the following in your terminal:
-
-### Linux & macOS
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/vicwomg/pikaraoke/master/build_scripts/install/install.sh | bash
-```
-
-### Windows (PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/vicwomg/pikaraoke/master/build_scripts/install/install.ps1 | iex
-```
-
-After installation, you can launch pikaraoke from the command line with `pikaraoke` or from a desktop shortcut. Re-running the above command will update a previous pikaraoke installation to the latest version.
-
-## Manual installation (advanced users)
-
 ### Prerequisites
 
-- A modern web browser (Chrome/Chromium/Edge recommended)
-- Python 3.10 or greater: [Python downloads](https://www.python.org/downloads/)
-- FFmpeg (preferably a build with lib-rubberband for transposing): [FFmpeg downloads](https://ffmpeg.org/download.html)
-- A js runtime installed to your PATH. [Node.js](https://nodejs.org/en/download/) is most common, [Deno](https://deno.com/) is probably easiest for non-developers.
-
-### Install the pikaraoke package
-
-We recommend installing pikaraoke via [uv](https://github.com/astral-sh/uv).
-
 ```sh
-uv tool install pikaraoke
+# Install uv (Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install FFmpeg
+# Windows: winget install ffmpeg
+# macOS: brew install ffmpeg
+# Linux: sudo apt install ffmpeg
 ```
 
-You may alternately use the standard python `pip install pikaraoke` installer if you are familiar with virtual environments or you are not concerned with global package isolation.
+### Install
 
-## Usage
+```sh
+# Basic install (no AI features)
+uv tool install pikaraoke
 
-Run pikaraoke from the command line with:
+# Full install with AI (Demucs + Whisper + pitch scoring)
+uv tool install "pikaraoke[ai]"
+```
+
+### Run
 
 ```sh
 pikaraoke
 ```
 
-Launches the player in "headed" mode via your default browser. Scan the QR code to connect mobile remotes. Use `pikaraoke --headless` to run as a background server for external browsers.
+Scan the QR code on the TV screen with your phone to start singing!
 
-See the help command `pikaraoke --help` for available options.
+## Architecture
 
-To upgrade to the latest version of pikaraoke, run:
+```
+Download (YouTube)
+  -> Demucs GPU (vocal/instrumental separation, ~30s)
+  -> Whisper CPU (word-level lyrics transcription, ~60s)
+  -> ASS karaoke subtitle generation (with \kf color animation)
+  -> Auto song name normalization (regex_tidy)
+  -> SQLite metadata database update
+  -> Enqueue for playback
 
-```sh
-uv tool upgrade pikaraoke
+Playback:
+  -> FFmpeg HLS multi-audio (original + instrumental tracks)
+  -> HLS.js in browser with instant audio track switching
+  -> SubtitlesOctopus renders karaoke lyrics (60fps, 4K support)
+  -> AudioWorklet pitch shift (no tempo change)
+  -> Microphone pitch scoring (YIN algorithm, real-time feedback)
 ```
 
-## Docker instructions
+## AI Processing Pipeline
 
-Run PiKaraoke in Docker using the command below. Note the requirements for port mapping, LAN IP specification, and persistent volume mounts (set to ~/.pikaraoke in the example for simplicity):
+| Stage | Engine | Device | Time (typical) |
+|-------|--------|--------|----------------|
+| Vocal Separation | Demucs htdemucs | CUDA GPU | ~30s |
+| Lyrics Transcription | faster-whisper / openai-whisper | CPU (subprocess) | ~60s |
+| Online Lyrics Correction | syncedlyrics (Lrclib/Musixmatch) | Network | ~2s |
+| Simplified -> Traditional Chinese | OpenCC (s2t) | CPU | \<1s |
+| Reference Pitch Extraction | YIN algorithm | CPU (subprocess) | ~30s |
 
-```sh
-docker run -p 5555:5555 \
-  -v ~/pikaraoke-songs:/app/pikaraoke-songs \
-  -v ~/.pikaraoke:/home/pikaraoke/.pikaraoke \
-  vicwomg/pikaraoke:latest \
-  -u http://<YOUR_LAN_IP>:5555
-```
+## Configuration
 
-For more information and a configurable docker-compose example, [see official Dockerhub repo](https://hub.docker.com/r/vicwomg/pikaraoke)
+### Settings (More -> Settings)
 
-## Screenshots
+All settings are in Traditional Chinese. Key sections:
 
-<div style="display: flex; flex-wrap: wrap;">
-<img width="250" alt="pikaraoke-nowplaying" src="https://user-images.githubusercontent.com/4107190/95813193-2cd5c180-0ccc-11eb-89f4-11a69676dc6f.png">
-<img width="250" alt="pikaraoke-queue" src="https://user-images.githubusercontent.com/4107190/95813195-2d6e5800-0ccc-11eb-8f00-1369350a8a1c.png">
-<img width="250"  alt="pikaraoke-browse" src="https://user-images.githubusercontent.com/4107190/95813182-27787700-0ccc-11eb-82c8-fde7f0a631c1.png">
-<img width="250"  alt="pikaraoke-search1" src="https://user-images.githubusercontent.com/4107190/95813197-2e06ee80-0ccc-11eb-9bf9-ddb24d988332.png">
-<img width="250"  alt="pikaraoke-search2" src="https://user-images.githubusercontent.com/4107190/95813190-2ba49480-0ccc-11eb-84e3-f902cbd489a2.png">
-<img width="400" height="300" alt="pikaraoke-tv2" src="https://user-images.githubusercontent.com/4107190/95813564-019fa200-0ccd-11eb-95e1-57a002c357a3.png">
-</div>
+- **Session**: Fair queue, auto-DJ, song limit per person, delay between songs
+- **Audio**: Volume, background music volume, equalize volume
+- **Display**: TV theme (Classic/Party/Romantic/Neon), clock, QR code, overlays
+- **Advanced**: A/V sync, buffer size, CDG pixel scaling
 
-## Developing pikaraoke
+### GPU Setup (for AI features)
 
-The Pikaraoke project utilizes `uv` for dependency management and local development.
+The system uses CUDA GPU for Demucs (vocal separation) and CPU for Whisper (lyrics). To enable GPU:
 
-- Install [uv](https://github.com/astral-sh/uv)
-- Git clone this repo
+1. Install NVIDIA CUDA toolkit
+2. Install with AI extras: `uv tool install "pikaraoke[ai]"`
+3. Verify: system will log `Running demucs (device=cuda)...` on first download
 
-From the pikaraoke directory:
+## Development
 
 ```sh
-# install dependencies and run pikaraoke from local code
+git clone https://github.com/victor3359/AloeberryHome-KTV-System.git
+cd AloeberryHome-KTV-System
 uv run pikaraoke
 ```
 
-See the [Pikaraoke development guide](https://github.com/vicwomg/pikaraoke/wiki/Pikaraoke-development-guide) for more details.
+### Running Tests
 
-## Troubleshooting and guides
+```sh
+uv run pytest tests/unit/ -q
+```
 
-See the [TROUBLESHOOTING wiki](https://github.com/vicwomg/pikaraoke/wiki/FAQ-&-Troubleshooting) for help with issues.
+### Code Quality
 
-There are also some great guides [on the wiki](https://github.com/vicwomg/pikaraoke/wiki/) to running pikaraoke in all manner of bizarre places including Android, Chromecast, and embedded TVs!
+```sh
+uv run pre-commit run --config code_quality/.pre-commit-config.yaml --all-files
+```
+
+## Project Stats
+
+- **70+ commits** across Round 2 and Round 3 development
+- **630 tests** passing
+- **50+ files** modified/created
+- **8,000+ lines** of new code
+- **CI**: 8/8 checks green (unit tests, code quality, smoke tests, Docker builds)
+
+## Credits
+
+- **Base Project**: [PiKaraoke](https://github.com/vicwomg/pikaraoke) by Vic Wong
+- **AI Enhancement**: Claude Opus 4.6 (Anthropic)
+- **Vocal Separation**: [Demucs](https://github.com/facebookresearch/demucs) by Meta Research
+- **Speech Recognition**: [Whisper](https://github.com/openai/whisper) / [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- **Subtitle Rendering**: [SubtitlesOctopus](https://github.com/libass/JavascriptSubtitlesOctopus)
+- **Traditional Chinese**: [OpenCC](https://github.com/BYVoid/OpenCC)
+- **Online Lyrics**: [syncedlyrics](https://github.com/rtcq/syncedlyrics)
+
+## License
+
+See [LICENSE](LICENSE) for details.

@@ -2905,6 +2905,19 @@ select option:checked {
 @media (min-width: 1024px) {
     .sp-song-grid { grid-template-columns: repeat(4, 1fr); }
 }
+@media (max-width: 767px) {
+    .sp-song-grid { grid-template-columns: 1fr; }
+    .sp-song-card__title {
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .sp-song-card__artist {
+        white-space: normal;
+    }
+}
 
 /* Song card */
 .sp-song-card {

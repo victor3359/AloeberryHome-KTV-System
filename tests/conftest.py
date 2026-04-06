@@ -87,6 +87,7 @@ class MockKaraoke:
         )
         self.playback_controller = MockPlaybackController()
         self.volume = 0.85
+        self.current_pitch_shift = 0
         self.running = True
         self.now_playing_notification = None
         self.session_start: float = time.time()
