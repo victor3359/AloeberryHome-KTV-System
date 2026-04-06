@@ -45,6 +45,8 @@ def setup_socket_events(socketio):
     @socketio.on("pitch_shift")
     def pitch_shift(semitones) -> None:
         """Broadcast pitch shift to all splash screens (client-side processing)."""
+        k = get_karaoke_instance()
+        k.current_pitch_shift = int(semitones)
         socketio.emit("pitch_shift", semitones, namespace="/")
 
     @socketio.on("register_splash")

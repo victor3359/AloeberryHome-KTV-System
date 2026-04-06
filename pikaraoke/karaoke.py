@@ -255,6 +255,7 @@ class Karaoke:
         self.known_singers: set[str] = set()
         self.session_start: float = time.time()
         self.play_history: list[dict] = []
+        self.current_pitch_shift = 0
 
         # Persistent cross-session data
         data_dir = get_data_directory()
@@ -563,6 +564,7 @@ class Karaoke:
     def reset_now_playing(self) -> None:
         """Reset all now playing state to defaults."""
         self.playback_controller.reset_now_playing()
+        self.current_pitch_shift = 0
         self.volume = self.preferences.get_or_default("volume")
         self.update_now_playing_socket()
 
@@ -590,6 +592,7 @@ class Karaoke:
             "next_user": next_song["user"] if next_song else None,
             "next_user2": next_song.get("user2") if next_song else None,
             "volume": self.volume,
+            "current_pitch_shift": self.current_pitch_shift,
             "session_elapsed": int(time.time() - self.session_start),
             "has_stems": has_stems,
         }

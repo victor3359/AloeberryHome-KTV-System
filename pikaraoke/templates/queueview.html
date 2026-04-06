@@ -67,10 +67,9 @@
         $(".control-panel__song").text(np.now_playing);
         $(".control-panel__singer").text(singerDisplay);
         $("#cp-volume").val(np.volume * 100);
-        if (np.now_playing_transpose !== undefined) {
-          $("#cp-transpose").val(np.now_playing_transpose);
-          $("#cp-transpose-label").text(getSemitonesLabel(np.now_playing_transpose));
-        }
+        var pitchVal = (np.current_pitch_shift !== undefined) ? np.current_pitch_shift : 0;
+        $("#cp-transpose").val(pitchVal);
+        $("#cp-transpose-label").text(getSemitonesLabel(pitchVal));
         // Show audio mode toggle if stems available
         if (np.has_stems) {
           $("#cp-audio-mode-group").show();
