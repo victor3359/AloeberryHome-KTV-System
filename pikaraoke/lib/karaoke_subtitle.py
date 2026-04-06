@@ -1,0 +1,192 @@
+"""ASS subtitle generation for karaoke lyrics.
+
+Generates ASS subtitle files with karaoke timing tags (kf) from Whisper
+transcription segments. SubtitlesOctopus/libass renders these as
+left-to-right color-changing lyrics during playback.
+"""
+
+from __future__ import annotations
+
+import re
+
+_HALLUCINATION_KEYWORDS = [
+    "作詞",
+    "作曲",
+    "編曲",
+    "填詞",
+    "監製",
+    "製作人",
+    "lyrics by",
+    "composed by",
+    "music by",
+    "arranged by",
+    "written by",
+    "produced by",
+    "directed by",
+    "字幕",
+    "歌詞提供",
+    "music video",
+    "official mv",
+    "subscribe",
+    "訂閱",
+    "點讚",
+    "like and subscribe",
+    "copyright",
+    "版權",
+    "all rights reserved",
+]
+
+
+def _format_ass_time(seconds: float) -> str:
+    """Format seconds as ASS timestamp H:MM:SS.cc."""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    cs = int((seconds % 1) * 100)
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def _to_traditional_chinese(text: str) -> str:
+    """Convert simplified Chinese to traditional Chinese."""
+    try:
+        from opencc import OpenCC
+
+        cc = OpenCC("s2t")
+        return cc.convert(text)
+    except ImportError:
+        return text
+
+
+def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
+    """Filter out Whisper hallucinated segments (fake text during silence).
+
+    Common hallucinations: repeated text, composer/lyricist credits,
+    nonsensical repetitions during instrumental intros/outros.
+    """
+    filtered = []
+    seen_texts: dict[str, int] = {}
+    prev_normalized = ""
+
+    for seg in segments:
+        text = seg.get("text", "").strip()
+        if not text:
+            continue
+
+        # Skip very short segments (likely noise)
+        duration = seg.get("end", 0) - seg.get("start", 0)
+        if duration < 0.1:
+            continue
+
+        # Skip segments with high no_speech_prob (silence detected)
+        if seg.get("no_speech_prob", 0) > 0.5:
+            continue
+
+        # Skip suspiciously long segments (normal lyric line is 2-10s)
+        if duration > 20:
+            continue
+
+        # Keyword-based hallucination detection (case-insensitive substring match)
+        text_lower = text.lower()
+        if any(kw in text_lower for kw in _HALLUCINATION_KEYWORDS):
+            continue
+
+        # Track repeated text -- hallucination repeats same phrase
+        normalized = re.sub(r"\s+", "", text)
+        seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
+        if seen_texts[normalized] > 3:
+            continue
+
+        # Skip consecutive identical lines (adjacent duplicates)
+        if normalized == prev_normalized:
+            continue
+        prev_normalized = normalized
+
+        filtered.append(seg)
+
+    return filtered
+
+
+def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = -0.3) -> str:
+    """Generate ASS subtitle content with karaoke timing tags.
+
+    Args:
+        segments: List of Whisper segments, each with 'words' containing
+                  {'word': str, 'start': float, 'end': float}.
+        title: Song title for the script info.
+        timing_offset: Seconds to delay subtitle fill animation (positive = later).
+                       Compensates for Whisper detecting word onsets slightly early.
+
+    Returns:
+        Complete ASS file content as a string.
+    """
+    header = f"""[Script Info]
+Title: {title}
+ScriptType: v4.00+
+PlayResX: 3840
+PlayResY: 2160
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Karaoke,Arial,168,&H0000D7FF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,8,5,2,80,80,120,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    lines = [header.strip()]
+
+    # Pre-display: show lyrics 1.5s before singing starts
+    # Timing offset: delay fill animation to match actual vocal onset
+    pre_display = 1.5
+
+    for segment in segments:
+        words = segment.get("words", [])
+        if not words:
+            text = _to_traditional_chinese(segment.get("text", "").strip())
+            if not text:
+                continue
+            start = segment.get("start", 0.0) + timing_offset
+            end = segment.get("end", start + 1.0) + timing_offset
+            duration_cs = max(int((end - start) * 100), 10)
+            early_start = max(0, start - pre_display)
+            pad_cs = int((start - early_start) * 100)
+            ass_start = _format_ass_time(early_start)
+            ass_end = _format_ass_time(end + 0.5)
+            if pad_cs > 0:
+                lines.append(
+                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,"
+                    f"{{\\kf{pad_cs}}}{{\\kf{duration_cs}}}{text}"
+                )
+            else:
+                lines.append(
+                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{{\\kf{duration_cs}}}{text}"
+                )
+            continue
+
+        # Build karaoke line from word-level timestamps (with offset)
+        seg_start = words[0]["start"] + timing_offset
+        seg_end = words[-1]["end"] + timing_offset
+        early_start = max(0, seg_start - pre_display)
+        pad_cs = int((seg_start - early_start) * 100)
+        ass_start = _format_ass_time(early_start)
+        ass_end = _format_ass_time(seg_end + 0.5)
+
+        karaoke_parts = []
+        if pad_cs > 0:
+            karaoke_parts.append(f"{{\\kf{pad_cs}}}")
+        for word_info in words:
+            word = word_info.get("word", "").strip()
+            if not word:
+                continue
+            w_start = word_info.get("start", 0.0) + timing_offset
+            w_end = word_info.get("end", w_start + 0.1) + timing_offset
+            duration_cs = max(int((w_end - w_start) * 100), 10)
+            prefix = " " if len(karaoke_parts) > (1 if pad_cs > 0 else 0) else ""
+            word = _to_traditional_chinese(word)
+            karaoke_parts.append(f"{{\\kf{duration_cs}}}{prefix}{word}")
+
+        if karaoke_parts:
+            text = "".join(karaoke_parts)
+            lines.append(f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{text}")
+
+    return "\n".join(lines) + "\n"

@@ -19,7 +19,7 @@ def get_ip(platform: str) -> str:
     """
     try:
         return _get_ip_via_psutil()
-    except Exception as e:
+    except Exception as e:  # broad catch: _get_ip_via_psutil raises Exception explicitly + ImportError
         logging.warning(f"psutil method failed: {e}, using platform-specific fallback")
         # Fall back to platform-specific methods
         if platform == "android":
@@ -123,7 +123,7 @@ def _get_ip_android() -> str:
             .strip()
         )
         return ip if ip else "127.0.0.1"
-    except Exception as e:
+    except Exception as e:  # broad catch: fail-safe — must always return an IP
         logging.warning(f"Could not determine IP address on Android: {e}")
         return "127.0.0.1"
 
@@ -147,7 +147,7 @@ def _get_ip_windows() -> str:
         # If we got localhost, fall back to the UDP socket trick
         if ip.startswith("127."):
             ip = _get_ip_via_udp_socket("8.8.8.8")
-    except Exception as e:
+    except Exception as e:  # broad catch: fail-safe — must always return an IP
         logging.warning(f"Could not determine IP address on Windows: {e}")
         ip = "127.0.0.1"
 
@@ -183,7 +183,7 @@ def _get_ip_via_udp_socket(target: str) -> str:
         # doesn't even have to be reachable
         s.connect((target, 80))
         ip = s.getsockname()[0]
-    except Exception:
+    except Exception:  # broad catch: fail-safe — must always return an IP
         ip = "127.0.0.1"
     finally:
         s.close()

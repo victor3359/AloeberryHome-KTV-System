@@ -13,6 +13,7 @@ let isScoreShown = false;
 const hasBgVideo = PikaraokeConfig.hasBgVideo;
 let currentVideoUrl = null;
 let hlsInstance = null;
+let _pitchShiftInitializing = false;
 let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
 let bg_playlist = [];
@@ -132,6 +133,16 @@ const endSong = async (reason = null, showScore = false) => {
   }
   if (window._pitchMeter) {
     window._pitchMeter.hide();
+  }
+
+  // Stop pitch shift AudioContext
+  if (window._pitchShiftNode) {
+    window._pitchShiftNode.disconnect();
+    window._pitchShiftNode = null;
+  }
+  if (window._pitchShiftCtx) {
+    window._pitchShiftCtx.close().catch(() => {});
+    window._pitchShiftCtx = null;
   }
 
   if (showScore && !PikaraokeConfig.disableScore) {
@@ -417,6 +428,16 @@ const handleNowPlayingUpdate = (np) => {
   }
 
   if (np.now_playing_url && np.now_playing_url !== currentVideoUrl) {
+    // Cleanup old AudioContext before changing song to prevent memory leaks
+    if (window._pitchShiftNode) {
+      window._pitchShiftNode.disconnect();
+      window._pitchShiftNode = null;
+    }
+    if (window._pitchShiftCtx) {
+      window._pitchShiftCtx.close().catch(() => {});
+      window._pitchShiftCtx = null;
+    }
+
     $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
     $("#progress-bar-fill").css({"width": "0%", "transition": "none"});
     $("#progress-bar-container").show();
@@ -470,7 +491,27 @@ const handleNowPlayingUpdate = (np) => {
 
     $("#video-container").show();
 
-    video.play().catch(err => {
+    video.play().then(() => {
+      // Pre-initialize SoundTouch AudioWorklet to avoid first-use latency
+      if (!window._pitchShiftCtx && !_pitchShiftInitializing) {
+        _pitchShiftInitializing = true;
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        ctx.audioWorklet.addModule("/static/js/soundtouch-worklet.js").then(() => {
+          const source = ctx.createMediaElementSource(video);
+          const node = new AudioWorkletNode(ctx, "soundtouch-processor");
+          source.connect(node);
+          node.connect(ctx.destination);
+          window._pitchShiftCtx = ctx;
+          window._pitchShiftNode = node;
+          _pitchShiftInitializing = false;
+          console.log("SoundTouch AudioWorklet pre-initialized");
+        }).catch(e => {
+          console.warn("SoundTouch pre-init failed:", e);
+          ctx.close().catch(() => {});
+          _pitchShiftInitializing = false;
+        });
+      }
+    }).catch(err => {
       console.error('Play failed:', err);
       setTimeout(() => video.play(), 1000);
     });
@@ -866,6 +907,8 @@ const setupSocketEvents = () => {
 
     // Initialize audio context and SoundTouch worklet on first use
     if (!window._pitchShiftCtx) {
+      if (_pitchShiftInitializing) return;
+      _pitchShiftInitializing = true;
       try {
         window._pitchShiftCtx = new (window.AudioContext || window.webkitAudioContext)();
         await window._pitchShiftCtx.audioWorklet.addModule("/static/js/soundtouch-worklet.js");
@@ -876,8 +919,12 @@ const setupSocketEvents = () => {
         console.log("SoundTouch AudioWorklet initialized");
       } catch (e) {
         console.warn("SoundTouch AudioWorklet failed:", e);
+        flashNotification("此瀏覽器不支援即時升降 Key", "is-warning");
+        window._pitchShiftCtx = null;
+        _pitchShiftInitializing = false;
         return;
       }
+      _pitchShiftInitializing = false;
     }
 
     // Resume context if suspended (requires user interaction)

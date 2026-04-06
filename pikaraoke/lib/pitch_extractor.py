@@ -130,6 +130,6 @@ def extract_pitch(
     except subprocess.TimeoutExpired:
         logging.warning("Pitch extraction timed out")
         return None
-    except Exception as e:
+    except OSError as e:
         logging.warning("Pitch extraction error: %s", e)
         return None

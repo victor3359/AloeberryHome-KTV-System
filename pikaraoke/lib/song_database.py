@@ -55,6 +55,11 @@ class SongDatabase:
                     UNIQUE(user, file_path)
                 )"""
             )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_songs_language ON songs(language)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_songs_play_count ON songs(play_count DESC)"
+            )
             conn.commit()
             conn.close()
 

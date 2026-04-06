@@ -10,6 +10,7 @@ gracefully degrades when they are not installed.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
@@ -19,6 +20,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pikaraoke.lib.events import EventSystem
+from pikaraoke.lib.karaoke_subtitle import (  # noqa: F401  (re-exported for backward compat)
+    _filter_whisper_hallucinations,
+    _format_ass_time,
+    generate_karaoke_ass,
+)
+from pikaraoke.lib.lyrics_corrector import (  # noqa: F401  (re-exported for backward compat)
+    _clean_search_title,
+    _correct_typos_with_online_lyrics,
+    _parse_lrc_line,
+    _search_online_lyrics,
+)
 
 # Lazy-check for optional dependencies
 DEMUCS_AVAILABLE = False
@@ -92,435 +104,6 @@ def _ass_path_for(song_path: str) -> str:
     """Compute expected karaoke ASS path for a song."""
     base = os.path.splitext(song_path)[0]
     return base + "_karaoke.ass"
-
-
-def _parse_lrc_line(line: str) -> tuple[float, str] | None:
-    """Parse an LRC timestamp line like '[01:23.45]lyrics text'."""
-    import re
-
-    m = re.match(r"\[(\d+):(\d+)\.(\d+)\](.*)", line.strip())
-    if not m:
-        return None
-    minutes, seconds, centis, text = m.groups()
-    timestamp = int(minutes) * 60 + int(seconds) + int(centis) / 100
-    return timestamp, text.strip()
-
-
-def _clean_search_title(title: str) -> str:
-    """Clean YouTube video title to extract artist + song name for lyrics search."""
-    import re
-
-    # Remove YouTube ID suffix (---xxxxx)
-    title = re.sub(r"---[\w-]{11}(\.\w+)?$", "", title)
-    # Remove file extension
-    title = re.sub(r"\.\w{3,4}$", "", title)
-    # Remove common noise words
-    noise = [
-        r"\(?official\s*(music\s*)?video\)?",
-        r"\(?official\s*MV\)?",
-        r"\(?MV\)?",
-        r"\(?HQ\)?",
-        r"官方版",
-        r"官方MV",
-        r"完整版",
-        r"lyrics?\s*video",
-        r"with\s*lyrics",
-        r"full\s*version",
-        r"\(?HD\)?",
-        r"\(?4K\)?",
-        r"\(?1080p\)?",
-    ]
-    for pat in noise:
-        title = re.sub(pat, "", title, flags=re.IGNORECASE)
-    # Remove brackets with content like 〈...〉【...】(...)
-    title = re.sub(r"[〈〉【】\[\]]", " ", title)
-    # Clean up whitespace
-    title = re.sub(r"\s+", " ", title).strip()
-    # Remove trailing punctuation
-    title = title.rstrip(" -_")
-    return title
-
-
-def _search_online_lyrics(title: str) -> list[dict] | None:
-    """Search for synced lyrics (LRC) online. Returns parsed segments or None."""
-    try:
-        import syncedlyrics
-
-        clean_title = _clean_search_title(title)
-        logging.info("Searching online lyrics for: '%s'", clean_title)
-        lrc = syncedlyrics.search(clean_title, synced_only=True)
-        if not lrc:
-            return None
-
-        segments = []
-        lines = [_parse_lrc_line(ln) for ln in lrc.splitlines() if ln.strip()]
-        parsed = [p for p in lines if p and p[1]]
-
-        # Validation: reject if too few lines (likely wrong match)
-        if len(parsed) < 5:
-            logging.warning("Online lyrics too short (%d lines), skipping", len(parsed))
-            return None
-
-        for i, (start, text) in enumerate(parsed):
-            end = parsed[i + 1][0] if i + 1 < len(parsed) else start + 5.0
-            segments.append({"start": start, "end": end, "text": text, "words": []})
-
-        logging.info("Found online synced lyrics: %d lines for '%s'", len(segments), clean_title)
-        return segments if segments else None
-    except Exception as e:
-        logging.warning("Online lyrics search failed: %s", e)
-        return None
-
-
-def _merge_online_text_with_whisper_timing(
-    whisper_segments: list[dict], online_segments: list[dict]
-) -> list[dict]:
-    """Replace Whisper text with online lyrics while keeping Whisper's word timing.
-
-    For each Whisper segment, find the best matching online lyric line by
-    timestamp proximity, then replace the segment text. Word-level timing
-    from Whisper is preserved for smooth karaoke animation.
-    """
-    if not online_segments:
-        return whisper_segments
-
-    # Build a list of online lyrics with timestamps for matching
-    online_lines = [(seg["start"], seg["text"]) for seg in online_segments if seg["text"]]
-
-    result = []
-    for wseg in whisper_segments:
-        w_start = wseg.get("start", 0)
-        w_text = wseg.get("text", "").strip()
-        words = wseg.get("words", [])
-
-        # Find closest online lyric line by start time (within 5 second window)
-        best_match = None
-        best_dist = 5.0
-        for o_start, o_text in online_lines:
-            dist = abs(w_start - o_start)
-            if dist < best_dist:
-                best_dist = dist
-                best_match = o_text
-
-        if best_match and words:
-            # Replace the segment text but keep word-level timing
-            # Distribute online text characters across Whisper word timings
-            online_chars = list(best_match.replace(" ", ""))
-            whisper_words = [w for w in words if w.get("word", "").strip()]
-
-            if whisper_words and online_chars:
-                # Distribute characters proportionally across word slots
-                chars_per_word = max(1, len(online_chars) // len(whisper_words))
-                new_words = []
-                char_idx = 0
-                for i, w in enumerate(whisper_words):
-                    if i == len(whisper_words) - 1:
-                        # Last word gets all remaining characters
-                        chunk = "".join(online_chars[char_idx:])
-                    else:
-                        chunk = "".join(online_chars[char_idx : char_idx + chars_per_word])
-                        char_idx += chars_per_word
-                    if chunk:
-                        new_words.append(
-                            {
-                                "word": chunk,
-                                "start": w["start"],
-                                "end": w["end"],
-                            }
-                        )
-
-                result.append(
-                    {
-                        "start": wseg["start"],
-                        "end": wseg["end"],
-                        "text": best_match,
-                        "words": new_words,
-                    }
-                )
-                continue
-
-        # No match or no words — keep original Whisper segment
-        result.append(wseg)
-
-    return result
-
-
-def _format_ass_time(seconds: float) -> str:
-    """Format seconds as ASS timestamp H:MM:SS.cc."""
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    cs = int((seconds % 1) * 100)
-    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
-
-
-def _correct_typos_with_online_lyrics(
-    whisper_segments: list[dict], online_segments: list[dict]
-) -> list[dict]:
-    """Correct Whisper homophone errors using online lyrics as reference.
-
-    Only replaces individual characters when the overall line similarity
-    is high (>60%), keeping Whisper's text structure and word timing intact.
-    Does NOT replace entire lines — only fixes likely typos.
-    """
-    from difflib import SequenceMatcher
-
-    online_lines = [(seg["start"], seg["text"]) for seg in online_segments if seg["text"]]
-    if not online_lines:
-        return whisper_segments
-
-    corrected_count = 0
-    result = []
-    for wseg in whisper_segments:
-        w_text = wseg.get("text", "").strip()
-        w_start = wseg.get("start", 0)
-        words = wseg.get("words", [])
-
-        # Find closest online line by timestamp (within 3 second window)
-        best_match = None
-        best_dist = 3.0
-        for o_start, o_text in online_lines:
-            dist = abs(w_start - o_start)
-            if dist < best_dist:
-                best_dist = dist
-                best_match = o_text
-
-        if not best_match or not words:
-            result.append(wseg)
-            continue
-
-        # Check similarity — only correct if >60% similar (same line, minor typos)
-        w_chars = w_text.replace(" ", "")
-        o_chars = best_match.replace(" ", "")
-        ratio = SequenceMatcher(None, w_chars, o_chars).ratio()
-
-        if ratio < 0.6:
-            # Too different — probably wrong match, keep Whisper as-is
-            result.append(wseg)
-            continue
-
-        if ratio > 0.99:
-            # Already identical, no correction needed
-            result.append(wseg)
-            continue
-
-        # Character-level correction: replace individual wrong chars in each word
-        o_idx = 0
-        new_words = []
-        for w in words:
-            word_text = w.get("word", "").strip()
-            if not word_text:
-                new_words.append(w)
-                continue
-
-            corrected_word = ""
-            for ch in word_text:
-                if o_idx < len(o_chars) and ch != o_chars[o_idx]:
-                    # Replace with online character (likely correct)
-                    corrected_word += o_chars[o_idx]
-                    corrected_count += 1
-                elif o_idx < len(o_chars):
-                    corrected_word += ch
-                else:
-                    corrected_word += ch
-                o_idx += 1
-
-            new_words.append(
-                {
-                    "word": corrected_word,
-                    "start": w["start"],
-                    "end": w["end"],
-                }
-            )
-
-        result.append(
-            {
-                "start": wseg["start"],
-                "end": wseg["end"],
-                "text": best_match,
-                "words": new_words,
-            }
-        )
-
-    if corrected_count > 0:
-        logging.info("Corrected %d characters with online lyrics", corrected_count)
-    return result
-
-
-_HALLUCINATION_KEYWORDS = [
-    "作詞",
-    "作曲",
-    "編曲",
-    "填詞",
-    "監製",
-    "製作人",
-    "lyrics by",
-    "composed by",
-    "music by",
-    "arranged by",
-    "written by",
-    "produced by",
-    "directed by",
-    "字幕",
-    "歌詞提供",
-    "music video",
-    "official mv",
-    "subscribe",
-    "訂閱",
-    "點讚",
-    "like and subscribe",
-    "copyright",
-    "版權",
-    "all rights reserved",
-]
-
-
-def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
-    """Filter out Whisper hallucinated segments (fake text during silence).
-
-    Common hallucinations: repeated text, composer/lyricist credits,
-    nonsensical repetitions during instrumental intros/outros.
-    """
-    import re
-
-    filtered = []
-    seen_texts: dict[str, int] = {}
-    prev_normalized = ""
-
-    for seg in segments:
-        text = seg.get("text", "").strip()
-        if not text:
-            continue
-
-        # Skip very short segments (likely noise)
-        duration = seg.get("end", 0) - seg.get("start", 0)
-        if duration < 0.1:
-            continue
-
-        # Skip segments with high no_speech_prob (silence detected)
-        if seg.get("no_speech_prob", 0) > 0.5:
-            continue
-
-        # Skip suspiciously long segments (normal lyric line is 2-10s)
-        if duration > 20:
-            continue
-
-        # Keyword-based hallucination detection (case-insensitive substring match)
-        text_lower = text.lower()
-        if any(kw in text_lower for kw in _HALLUCINATION_KEYWORDS):
-            continue
-
-        # Track repeated text — hallucination repeats same phrase
-        normalized = re.sub(r"\s+", "", text)
-        seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
-        if seen_texts[normalized] > 3:
-            continue
-
-        # Skip consecutive identical lines (adjacent duplicates)
-        if normalized == prev_normalized:
-            continue
-        prev_normalized = normalized
-
-        filtered.append(seg)
-
-    return filtered
-
-
-def _to_traditional_chinese(text: str) -> str:
-    """Convert simplified Chinese to traditional Chinese."""
-    try:
-        from opencc import OpenCC
-
-        cc = OpenCC("s2t")
-        return cc.convert(text)
-    except ImportError:
-        return text
-
-
-def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = -0.3) -> str:
-    """Generate ASS subtitle content with karaoke timing tags.
-
-    Args:
-        segments: List of Whisper segments, each with 'words' containing
-                  {'word': str, 'start': float, 'end': float}.
-        title: Song title for the script info.
-        timing_offset: Seconds to delay subtitle fill animation (positive = later).
-                       Compensates for Whisper detecting word onsets slightly early.
-
-    Returns:
-        Complete ASS file content as a string.
-    """
-    header = f"""[Script Info]
-Title: {title}
-ScriptType: v4.00+
-PlayResX: 3840
-PlayResY: 2160
-WrapStyle: 0
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,Arial,168,&H0000D7FF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,8,5,2,80,80,120,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-    lines = [header.strip()]
-
-    # Pre-display: show lyrics 1.5s before singing starts
-    # Timing offset: delay fill animation to match actual vocal onset
-    pre_display = 1.5
-
-    for segment in segments:
-        words = segment.get("words", [])
-        if not words:
-            text = _to_traditional_chinese(segment.get("text", "").strip())
-            if not text:
-                continue
-            start = segment.get("start", 0.0) + timing_offset
-            end = segment.get("end", start + 1.0) + timing_offset
-            duration_cs = max(int((end - start) * 100), 10)
-            early_start = max(0, start - pre_display)
-            pad_cs = int((start - early_start) * 100)
-            ass_start = _format_ass_time(early_start)
-            ass_end = _format_ass_time(end + 0.5)
-            if pad_cs > 0:
-                lines.append(
-                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,"
-                    f"{{\\kf{pad_cs}}}{{\\kf{duration_cs}}}{text}"
-                )
-            else:
-                lines.append(
-                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{{\\kf{duration_cs}}}{text}"
-                )
-            continue
-
-        # Build karaoke line from word-level timestamps (with offset)
-        seg_start = words[0]["start"] + timing_offset
-        seg_end = words[-1]["end"] + timing_offset
-        early_start = max(0, seg_start - pre_display)
-        pad_cs = int((seg_start - early_start) * 100)
-        ass_start = _format_ass_time(early_start)
-        ass_end = _format_ass_time(seg_end + 0.5)
-
-        karaoke_parts = []
-        if pad_cs > 0:
-            karaoke_parts.append(f"{{\\kf{pad_cs}}}")
-        for word_info in words:
-            word = word_info.get("word", "").strip()
-            if not word:
-                continue
-            w_start = word_info.get("start", 0.0) + timing_offset
-            w_end = word_info.get("end", w_start + 0.1) + timing_offset
-            duration_cs = max(int((w_end - w_start) * 100), 10)
-            prefix = " " if len(karaoke_parts) > (1 if pad_cs > 0 else 0) else ""
-            word = _to_traditional_chinese(word)
-            karaoke_parts.append(f"{{\\kf{duration_cs}}}{prefix}{word}")
-
-        if karaoke_parts:
-            text = "".join(karaoke_parts)
-            lines.append(f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{text}")
-
-    return "\n".join(lines) + "\n"
 
 
 class VocalSeparator:
@@ -797,7 +380,13 @@ class VocalSeparator:
             )
             return TranscriptionResult(success=True, segments=segments, language=language)
 
-        except Exception as e:
+        except (
+            subprocess.SubprocessError,
+            OSError,
+            json.JSONDecodeError,
+            KeyError,
+            ValueError,
+        ) as e:
             logging.error("Whisper transcription failed: %s", e)
             return TranscriptionResult(success=False, error=str(e))
 
@@ -855,7 +444,7 @@ class VocalSeparator:
                         vocals_for_pitch, _ = _stem_paths_for(song_path)
                         if os.path.exists(vocals_for_pitch):
                             extract_pitch(vocals_for_pitch)
-                    except Exception as e:
+                    except (ImportError, subprocess.SubprocessError, OSError) as e:
                         logging.warning("Pitch extraction failed: %s", e)
 
                     self._events.emit("processing_progress", {"stage": "處理完成", "percent": 100})

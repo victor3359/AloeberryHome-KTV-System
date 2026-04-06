@@ -168,7 +168,7 @@ def main() -> None:
                     logging.info("Killed orphaned FFmpeg process (PID %d)", proc.info["pid"])
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
-    except Exception:
+    except (ImportError, OSError):
         pass
 
     if not is_ffmpeg_installed():

@@ -16,6 +16,6 @@ def now_playing():
     k = get_karaoke_instance()
     try:
         return json.dumps(k.get_now_playing())
-    except Exception as e:
+    except Exception as e:  # broad catch: startup race can cause AttributeError, TypeError, etc.
         logging.error("Problem loading /nowplaying, pikaraoke may still be starting up: " + str(e))
         return ""
