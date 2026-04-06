@@ -287,6 +287,7 @@ class Karaoke:
             youtubedl_proxy=self.youtubedl_proxy,
             additional_ytdl_args=self.additional_ytdl_args,
             vocal_separator=self.vocal_separator if self.vocal_separator.is_available() else None,
+            song_db=self.song_db,
         )
         self.download_manager.start()
 
