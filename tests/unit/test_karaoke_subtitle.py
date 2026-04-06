@@ -102,6 +102,73 @@ class TestGenerateKaraokeAssWithCjk:
         assert "world" in ass
 
 
+class TestTwoLineLayout:
+    def _two_line_segments(self):
+        return [
+            {
+                "text": "第一行歌詞",
+                "words": [
+                    {"word": "第一行", "start": 5.0, "end": 6.0},
+                    {"word": "歌詞", "start": 6.0, "end": 7.0},
+                ],
+            },
+            {
+                "text": "第二行歌詞",
+                "words": [
+                    {"word": "第二行", "start": 10.0, "end": 11.0},
+                    {"word": "歌詞", "start": 11.0, "end": 12.0},
+                ],
+            },
+        ]
+
+    def test_has_active_style(self):
+        ass = generate_karaoke_ass(self._two_line_segments())
+        assert "Style: Active," in ass
+
+    def test_has_preview_style(self):
+        ass = generate_karaoke_ass(self._two_line_segments())
+        assert "Style: Preview," in ass
+
+    def test_active_line_has_pos_tag(self):
+        ass = generate_karaoke_ass(self._two_line_segments())
+        assert "\\pos(1920,1960)" in ass
+
+    def test_preview_line_has_pos_tag(self):
+        ass = generate_karaoke_ass(self._two_line_segments())
+        assert "\\pos(1920,1760)" in ass
+
+    def test_preview_shows_next_line_text(self):
+        ass = generate_karaoke_ass(self._two_line_segments())
+        # Preview of line 2 should appear during line 1
+        preview_lines = [l for l in ass.splitlines() if ",Preview," in l]
+        assert len(preview_lines) >= 1
+        assert "第二行歌詞" in preview_lines[0]
+
+    def test_last_line_has_no_preview(self):
+        segs = self._two_line_segments()
+        ass = generate_karaoke_ass(segs)
+        # Only 1 preview (for line 2 during line 1), not 2
+        preview_lines = [l for l in ass.splitlines() if ",Preview," in l]
+        assert len(preview_lines) == 1
+
+    def test_active_layer_higher_than_preview(self):
+        ass = generate_karaoke_ass(self._two_line_segments())
+        for line in ass.splitlines():
+            if ",Active," in line:
+                assert line.startswith("Dialogue: 1,")
+            elif ",Preview," in line:
+                assert line.startswith("Dialogue: 0,")
+
+    def test_cream_amber_colors(self):
+        ass = generate_karaoke_ass(self._two_line_segments())
+        assert "&H00E0F3FA" in ass  # Cream white primary
+        assert "&H007CA8E8" in ass  # Warm amber secondary
+
+    def test_uses_droid_sans_fallback_font(self):
+        ass = generate_karaoke_ass(self._two_line_segments())
+        assert "DroidSansFallback" in ass
+
+
 class TestFilterHallucinations:
     def _seg(self, text, start=1.0, end=3.0, no_speech_prob=0.0):
         return {"text": text, "start": start, "end": end, "no_speech_prob": no_speech_prob}

@@ -182,19 +182,57 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
     return filtered
 
 
+def _build_kf_text(
+    words: list[dict], timing_offset: float, pre_display: float
+) -> tuple[str, float, float]:
+    """Build karaoke fill text from word-level timestamps.
+
+    Returns (kf_tagged_text, seg_start, seg_end).
+    """
+    seg_start = words[0]["start"] + timing_offset
+    seg_end = words[-1]["end"] + timing_offset
+    early_start = max(0, seg_start - pre_display)
+    pad_cs = int((seg_start - early_start) * 100)
+
+    parts: list[str] = []
+    if pad_cs > 0:
+        parts.append(f"{{\\kf{pad_cs}}}")
+    for word_info in words:
+        word = word_info.get("word", "").strip()
+        if not word:
+            continue
+        w_start = word_info.get("start", 0.0) + timing_offset
+        w_end = word_info.get("end", w_start + 0.1) + timing_offset
+
+        char_parts = _split_cjk_word(word, w_start, w_end)
+        for char_text, c_start, c_end in char_parts:
+            dur_cs = max(int((c_end - c_start) * 100), 5)
+            has_prev = len(parts) > (1 if pad_cs > 0 else 0)
+            prefix = " " if has_prev and not _is_cjk_char(char_text[0]) else ""
+            char_text = _to_traditional_chinese(char_text)
+            parts.append(f"{{\\kf{dur_cs}}}{prefix}{char_text}")
+
+    return "".join(parts), seg_start, seg_end
+
+
 def generate_karaoke_ass(segments: list[dict], title: str = "", timing_offset: float = -0.3) -> str:
-    """Generate ASS subtitle content with karaoke timing tags.
+    """Generate ASS subtitle with two-line KTV layout.
+
+    Active line: cream white text fills to warm amber word by word.
+    Preview line: soft gray text showing the next line.
 
     Args:
-        segments: List of Whisper segments, each with 'words' containing
-                  {'word': str, 'start': float, 'end': float}.
-        title: Song title for the script info.
-        timing_offset: Seconds to delay subtitle fill animation (positive = later).
-                       Compensates for Whisper detecting word onsets slightly early.
+        segments: List of segments with 'words' and/or 'text'.
+        title: Song title for script info.
+        timing_offset: Seconds to shift fill animation timing.
 
     Returns:
         Complete ASS file content as a string.
     """
+    # Positions for 3840x2160 PlayRes
+    active_y = 1960
+    preview_y = 1760
+
     header = f"""[Script Info]
 Title: {title}
 ScriptType: v4.00+
@@ -204,17 +242,17 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,Arial,168,&H0000D7FF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,8,5,2,80,80,120,1
+Style: Active,DroidSansFallback,168,&H00E0F3FA,&H007CA8E8,&H00000000,&H80000000,1,0,0,0,100,100,2,0,1,6,3,2,80,80,120,1
+Style: Preview,DroidSansFallback,148,&H508B8B8B,&H508B8B8B,&H00000000,&H80000000,0,0,0,0,100,100,2,0,1,4,2,2,80,80,120,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines = [header.strip()]
-
-    # Pre-display: show lyrics 1.5s before singing starts
-    # Timing offset: delay fill animation to match actual vocal onset
     pre_display = 1.5
 
+    # First pass: build line data (kf_text, plain_text, start, end)
+    line_data: list[tuple[str, str, float, float]] = []
     for segment in segments:
         words = segment.get("words", [])
         if not words:
@@ -223,51 +261,39 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 continue
             start = segment.get("start", 0.0) + timing_offset
             end = segment.get("end", start + 1.0) + timing_offset
-            duration_cs = max(int((end - start) * 100), 10)
-            early_start = max(0, start - pre_display)
-            pad_cs = int((start - early_start) * 100)
-            ass_start = _format_ass_time(early_start)
-            ass_end = _format_ass_time(end + 0.5)
-            if pad_cs > 0:
-                lines.append(
-                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,"
-                    f"{{\\kf{pad_cs}}}{{\\kf{duration_cs}}}{text}"
-                )
-            else:
-                lines.append(
-                    f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{{\\kf{duration_cs}}}{text}"
-                )
+            dur_cs = max(int((end - start) * 100), 10)
+            early = max(0, start - pre_display)
+            pad_cs = int((start - early) * 100)
+            kf = f"{{\\kf{pad_cs}}}{{\\kf{dur_cs}}}{text}" if pad_cs > 0 else f"{{\\kf{dur_cs}}}{text}"
+            line_data.append((kf, text, start, end))
             continue
 
-        # Build karaoke line from word-level timestamps (with offset)
-        seg_start = words[0]["start"] + timing_offset
-        seg_end = words[-1]["end"] + timing_offset
-        early_start = max(0, seg_start - pre_display)
-        pad_cs = int((seg_start - early_start) * 100)
+        kf_text, seg_start, seg_end = _build_kf_text(words, timing_offset, pre_display)
+        if kf_text:
+            plain = _to_traditional_chinese(segment.get("text", "").strip())
+            line_data.append((kf_text, plain, seg_start, seg_end))
+
+    # Second pass: generate two-line KTV dialogue events
+    for i, (kf_text, plain_text, start, end) in enumerate(line_data):
+        early_start = max(0, start - pre_display)
         ass_start = _format_ass_time(early_start)
-        ass_end = _format_ass_time(seg_end + 0.5)
+        ass_end = _format_ass_time(end + 0.5)
 
-        karaoke_parts = []
-        if pad_cs > 0:
-            karaoke_parts.append(f"{{\\kf{pad_cs}}}")
-        for word_info in words:
-            word = word_info.get("word", "").strip()
-            if not word:
-                continue
-            w_start = word_info.get("start", 0.0) + timing_offset
-            w_end = word_info.get("end", w_start + 0.1) + timing_offset
+        # Active line: cream white → warm amber fill
+        lines.append(
+            f"Dialogue: 1,{ass_start},{ass_end},Active,,0,0,0,,"
+            f"{{\\an2\\pos(1920,{active_y})}}{kf_text}"
+        )
 
-            # Split CJK words into per-character timing for smooth fill
-            char_parts = _split_cjk_word(word, w_start, w_end)
-            for char_text, c_start, c_end in char_parts:
-                dur_cs = max(int((c_end - c_start) * 100), 5)
-                has_prev = len(karaoke_parts) > (1 if pad_cs > 0 else 0)
-                prefix = " " if has_prev and not _is_cjk_char(char_text[0]) else ""
-                char_text = _to_traditional_chinese(char_text)
-                karaoke_parts.append(f"{{\\kf{dur_cs}}}{prefix}{char_text}")
-
-        if karaoke_parts:
-            text = "".join(karaoke_parts)
-            lines.append(f"Dialogue: 0,{ass_start},{ass_end},Karaoke,,0,0,0,,{text}")
+        # Preview line: show NEXT line in soft gray (no fill)
+        if i + 1 < len(line_data):
+            _, next_plain, next_start, _ = line_data[i + 1]
+            if next_plain:
+                preview_start = _format_ass_time(early_start)
+                preview_end = _format_ass_time(next_start + 0.3)
+                lines.append(
+                    f"Dialogue: 0,{preview_start},{preview_end},Preview,,0,0,0,,"
+                    f"{{\\an2\\pos(1920,{preview_y})}}{next_plain}"
+                )
 
     return "\n".join(lines) + "\n"
