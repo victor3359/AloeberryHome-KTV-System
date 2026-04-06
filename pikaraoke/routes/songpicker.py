@@ -123,6 +123,13 @@ def songpicker():
     # Feature Q: Full artist directory (all artists with 1+ songs)
     all_artists = sorted(artist_counts.keys())
 
+    # Song metadata from database
+    song_metadata = {}
+    for song in paginated_songs:
+        meta = k.song_db.get_song(song)
+        if meta:
+            song_metadata[song] = meta
+
     # Feature I: Play counts
     play_counts = k.play_stats.get_all_counts()
 
@@ -155,4 +162,5 @@ def songpicker():
         play_counts=play_counts,
         user_favorites=user_favorites,
         filter_mode=filter_mode,
+        song_metadata=song_metadata,
     )

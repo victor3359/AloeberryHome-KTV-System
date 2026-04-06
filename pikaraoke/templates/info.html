@@ -220,24 +220,33 @@
 
       <script>
         $(function() {
-          $.getJSON("/play_stats/top?n=999", function(data) {
-            var songs = data || [];
-            var html = "";
-            if (!songs.length) {
-              html = '<p style="color:var(--text-secondary); font-size:0.85rem">尚無播放紀錄</p>';
+          // Load stats from song database
+          $.getJSON("/library/stats", function(s) {
+            $("#lib-song-count").text(s.song_count || 0);
+            $("#lib-artist-count").text(s.artist_count || 0);
+          });
+          // Load song list with play counts
+          $.getJSON("/library/songs", function(songs) {
+            if (!songs || !songs.length) {
+              $("#lib-song-list").html('<p style="color:var(--text-secondary); font-size:0.85rem">歌庫是空的</p>');
+              return;
             }
+            var html = "";
             songs.forEach(function(s) {
-              html += '<div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05)">';
-              html += '<span style="flex:1; font-size:0.85rem; color:var(--text-primary)">' + $("<span>").text(s.title).html() + '</span>';
-              html += '<span style="font-size:0.75rem; color:var(--accent-cyan); white-space:nowrap">' + s.count + ' 次</span>';
+              var artist = s.artist ? '<span style="color:var(--accent-purple); font-size:0.75rem">' + $("<span>").text(s.artist).html() + '</span> ' : '';
+              var title = $("<span>").text(s.title || s.file_path).html();
+              var stems = s.has_stems ? '<span style="color:var(--color-success, #10b981); font-size:0.65rem">KTV</span> ' : '';
+              var lyrics = s.has_lyrics ? '<span style="color:var(--accent-cyan); font-size:0.65rem">歌詞</span> ' : '';
+              var plays = s.play_count > 0 ? '<span style="font-size:0.7rem; color:var(--accent-cyan)">' + s.play_count + '次</span>' : '';
+              html += '<div style="display:flex; align-items:center; gap:6px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05)">';
+              html += '<div style="flex:1; min-width:0">';
+              html += '<div style="font-size:0.85rem; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">' + title + '</div>';
+              html += '<div>' + artist + stems + lyrics + '</div>';
+              html += '</div>';
+              html += plays;
               html += '</div>';
             });
             $("#lib-song-list").html(html);
-          });
-          // Count songs and artists from songpicker
-          $.get("/songpicker", function(page) {
-            var m = page.match(/共 <b>(\d+)<\/b> 首歌曲/);
-            if (m) $("#lib-song-count").text(m[1]);
           });
         });
       </script>

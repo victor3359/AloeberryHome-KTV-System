@@ -42,6 +42,7 @@ class DownloadManager:
         youtubedl_proxy: str | None = None,
         additional_ytdl_args: str | None = None,
         vocal_separator: Any = None,
+        song_db: Any = None,
     ) -> None:
         """Initialize the download manager.
 
@@ -59,6 +60,7 @@ class DownloadManager:
         self._song_manager = song_manager
         self._queue_manager = queue_manager
         self._vocal_separator = vocal_separator
+        self._song_db = song_db
         self._download_path = download_path
         self._youtubedl_proxy = youtubedl_proxy
         self._additional_ytdl_args = additional_ytdl_args
@@ -331,12 +333,17 @@ class DownloadManager:
 
             # Auto-normalize song name: "YouTubeTitle" → "Artist - Song"
             if song_is_valid and song_path:
+                # Extract YouTube ID BEFORE renaming (rename removes it from filename)
+                import re as _re
+
+                _yt_match = _re.search(r"---([A-Za-z0-9_-]{11})\.", os.path.basename(song_path))
+                _youtube_id = _yt_match.group(1) if _yt_match else (video_id or "")
+
                 try:
                     from pikaraoke.lib.metadata_parser import regex_tidy
 
                     display_name = self._song_manager.filename_from_path(song_path)
                     corrected = regex_tidy(display_name)
-                    # Only rename if result has "Artist - Song" format and isn't worse
                     if (
                         corrected
                         and corrected != display_name
@@ -349,6 +356,33 @@ class DownloadManager:
                         logging.info("Auto-renamed: %s → %s", display_name, corrected)
                 except Exception as e:
                     logging.warning("Auto-rename failed: %s", e)
+
+                # Update song database with YouTube ID and thumbnail (even after rename)
+                try:
+                    from pikaraoke.routes.files import _detect_language
+
+                    clean_name = self._song_manager.filename_from_path(song_path, True)
+                    parts = clean_name.split(" - ", 1)
+                    artist = parts[0].strip() if len(parts) > 1 else ""
+                    title = parts[1].strip() if len(parts) > 1 else clean_name
+                    thumb = (
+                        f"https://img.youtube.com/vi/{_youtube_id}/mqdefault.jpg"
+                        if _youtube_id
+                        else ""
+                    )
+                    stem_base = os.path.splitext(song_path)[0]
+                    self._song_db.upsert_song(
+                        song_path,
+                        artist=artist,
+                        title=title,
+                        language=_detect_language(clean_name),
+                        youtube_id=_youtube_id,
+                        thumbnail_url=thumb,
+                        has_stems=int(os.path.exists(stem_base + "_instrumental.mp3")),
+                        has_lyrics=int(os.path.exists(stem_base + "_karaoke.ass")),
+                    )
+                except Exception as e:
+                    logging.warning("DB update failed: %s", e)
 
             if enqueue:
                 if song_is_valid and song_path:
