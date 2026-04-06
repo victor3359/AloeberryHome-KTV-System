@@ -859,26 +859,23 @@ const setupSocketEvents = () => {
     $("#leaderboard-screen").fadeOut(400);
   });
 
-  // Client-side pitch shift via Web Audio API (no tempo change)
+  // Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change)
   socket.on("pitch_shift", async (semitones) => {
     const video = getVideoPlayer();
     if (!video) return;
 
-    // Initialize audio context and pitch shift node on first use
+    // Initialize audio context and SoundTouch worklet on first use
     if (!window._pitchShiftCtx) {
       try {
         window._pitchShiftCtx = new (window.AudioContext || window.webkitAudioContext)();
-        await window._pitchShiftCtx.audioWorklet.addModule("/static/js/pitch-shift-processor.js");
+        await window._pitchShiftCtx.audioWorklet.addModule("/static/js/soundtouch-worklet.js");
         const source = window._pitchShiftCtx.createMediaElementSource(video);
-        window._pitchShiftNode = new AudioWorkletNode(window._pitchShiftCtx, "pitch-shift-processor");
+        window._pitchShiftNode = new AudioWorkletNode(window._pitchShiftCtx, "soundtouch-processor");
         source.connect(window._pitchShiftNode);
         window._pitchShiftNode.connect(window._pitchShiftCtx.destination);
-        console.log("Pitch shift AudioWorklet initialized");
+        console.log("SoundTouch AudioWorklet initialized");
       } catch (e) {
-        console.warn("AudioWorklet pitch shift failed, falling back to playbackRate:", e);
-        // Fallback: old method
-        if (semitones === 0) { video.playbackRate = 1.0; video.preservesPitch = true; }
-        else { video.preservesPitch = false; video.playbackRate = Math.pow(2, semitones / 12); }
+        console.warn("SoundTouch AudioWorklet failed:", e);
         return;
       }
     }
@@ -888,9 +885,9 @@ const setupSocketEvents = () => {
       await window._pitchShiftCtx.resume();
     }
 
-    // Send pitch value to AudioWorklet processor
-    window._pitchShiftNode.port.postMessage({ type: "setPitch", semitones: semitones });
-    console.log("Pitch shift: " + semitones + " semitones (AudioWorklet, no tempo change)");
+    // Set pitch shift via AudioParam (no tempo change)
+    window._pitchShiftNode.parameters.get("pitchSemitones").value = semitones;
+    console.log("Pitch shift: " + semitones + " semitones (SoundTouch, no tempo change)");
   });
 
   // Instant audio track switching (multi-audio HLS)
