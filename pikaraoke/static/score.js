@@ -57,7 +57,7 @@ async function rotateScore(scoreTextElement, duration) {
   }
 }
 
-async function startScore(staticPath) {
+async function startScore(staticPath, preCalculatedScore) {
   try {
     const r = await fetch(PikaraokeConfig.scorePhrasesUrl);
     scoreReviews = await r.json();
@@ -69,7 +69,7 @@ async function startScore(staticPath) {
   const scoreTextElement = $("#score-number-text");
   const scoreReviewElement = $("#score-review-text");
 
-  const scoreValue = getScoreValue();
+  const scoreValue = (preCalculatedScore !== undefined) ? preCalculatedScore : getScoreValue();
   const scoreData = getScoreData(scoreValue);
 
   const drums = new Audio(staticPath + "sounds/score-drums.mp3");
