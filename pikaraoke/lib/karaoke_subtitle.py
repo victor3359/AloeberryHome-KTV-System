@@ -279,29 +279,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     #   bottom: [A active]  [C preview gray]  [C active]
     #   top:    [B preview]  [B active]       [D preview gray]
     pos_list = [active_y, preview_y]
+    # Track when each position becomes free (prevent overlap)
+    pos_free_at = {active_y: 0.0, preview_y: 0.0}
 
     for i, (kf_text, plain_text, start, end) in enumerate(line_data):
         my_y = pos_list[i % 2]
 
-        # Active: starts at singing time, ends at singing end (no padding)
-        ass_start = _format_ass_time(start)
-        ass_end = _format_ass_time(end)
+        # Active: starts when position is free, ends at singing end
+        actual_start = max(start, pos_free_at[my_y])
+        pos_free_at[my_y] = end
         lines.append(
-            f"Dialogue: 1,{ass_start},{ass_end},Active,,0,0,0,,"
+            f"Dialogue: 1,{_format_ass_time(actual_start)},{_format_ass_time(end)},Active,,0,0,0,,"
             f"{{\\an2\\pos(1920,{my_y})}}{kf_text}"
         )
 
-        # Preview for NEXT line: appears when THIS line starts singing,
-        # ends exactly when next line's Active starts (seamless handoff).
+        # Preview for NEXT line at the OTHER position
         if i + 1 < len(line_data):
             _, next_plain, next_start, _ = line_data[i + 1]
             next_y = pos_list[(i + 1) % 2]
             if next_plain:
-                preview_start = _format_ass_time(start)
-                preview_end = _format_ass_time(next_start)
-                lines.append(
-                    f"Dialogue: 0,{preview_start},{preview_end},Preview,,0,0,0,,"
-                    f"{{\\an2\\pos(1920,{next_y})}}{next_plain}"
-                )
+                preview_begin = max(actual_start, pos_free_at[next_y])
+                preview_finish = next_start
+                if preview_finish > preview_begin + 0.3:
+                    pos_free_at[next_y] = preview_finish
+                    lines.append(
+                        f"Dialogue: 0,{_format_ass_time(preview_begin)},{_format_ass_time(preview_finish)},Preview,,0,0,0,,"
+                        f"{{\\an2\\pos(1920,{next_y})}}{next_plain}"
+                    )
 
     return "\n".join(lines) + "\n"

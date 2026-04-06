@@ -98,13 +98,17 @@ def _search_online_lyrics(title: str) -> list[dict] | None:
 
 
 def _map_chars_to_whisper_words(
-    online_text: str, whisper_words: list[dict], is_cjk: bool = False
+    online_text: str,
+    whisper_words: list[dict],
+    is_cjk: bool = False,
+    line_end: float | None = None,
 ) -> list[dict]:
     """Map online text characters to Whisper word timestamps.
 
     Uses Whisper words as timing source, online text as display.
     Each Whisper word's duration is subdivided across its characters,
     then online characters inherit these per-character timings.
+    Excess characters use line_end for even distribution (not 0.1s).
     """
     # Build per-character timing from Whisper words
     whisper_chars: list[dict] = []
@@ -127,23 +131,22 @@ def _map_chars_to_whisper_words(
     # Map online characters to Whisper character timings
     online_chars = [c for c in online_text if not c.isspace()] if is_cjk else online_text.split()
     if not online_chars or not whisper_chars:
-        return _interpolate_word_timing(
-            online_text,
-            whisper_words[0]["start"] if whisper_words else 0,
-            whisper_words[-1]["end"] if whisper_words else 1,
-            is_cjk,
-        )
+        start = whisper_words[0]["start"] if whisper_words else 0
+        end = line_end or (whisper_words[-1]["end"] if whisper_words else 1)
+        return _interpolate_word_timing(online_text, start, end, is_cjk)
 
     result = []
     for i, ch in enumerate(online_chars):
         if i < len(whisper_chars):
-            # Use Whisper timing for this character position
             result.append({"word": ch, "start": whisper_chars[i]["start"], "end": whisper_chars[i]["end"]})
         else:
-            # Online has more chars than Whisper: extend from last timing
-            last = result[-1] if result else whisper_chars[-1]
-            dur = 0.1
-            result.append({"word": ch, "start": last["end"], "end": last["end"] + dur})
+            # Excess chars: distribute evenly to line_end (not 0.1s)
+            last_end = result[-1]["end"] if result else whisper_chars[-1]["end"]
+            end = line_end or last_end + 2.0
+            remaining = len(online_chars) - i
+            dur = max((end - last_end) / remaining, 0.05)
+            result.append({"word": ch, "start": last_end, "end": last_end + dur})
+            last_end += dur
 
     return result
 
@@ -234,9 +237,9 @@ def align_online_with_whisper_timing(
 ) -> list[dict] | None:
     """Align online lyrics text with Whisper word-level timestamps.
 
-    Uses online text (accurate, human-written) combined with Whisper's
-    word-level timing. Falls back to even interpolation when no matching
-    Whisper segment is found for a given online line.
+    Uses a flat Whisper word timeline (not segment matching) to ensure
+    every character gets real timing. Online text provides the display,
+    Whisper words provide the timing.
 
     Returns aligned segments, or None if alignment quality is too low.
     """
@@ -252,9 +255,21 @@ def align_online_with_whisper_timing(
             for seg in online_segments
         ]
 
+    # Flatten ALL Whisper words into a single sorted timeline
+    all_words: list[dict] = []
+    for wseg in whisper_segments:
+        for w in wseg.get("words", []):
+            if w.get("word", "").strip():
+                all_words.append(w)
+    all_words.sort(key=lambda w: w.get("start", 0))
+
+    if not all_words:
+        return None
+
+    # Walk through online lines and word timeline in parallel
     aligned = []
     matched_count = 0
-    used_whisper_ids: set[int] = set()  # Track used Whisper segments by id
+    word_cursor = 0
 
     for oseg in online_segments:
         o_text = oseg.get("text", "").strip()
@@ -263,34 +278,28 @@ def align_online_with_whisper_timing(
         if not o_text:
             continue
 
-        # Collect ALL Whisper segments overlapping this online line's time range
-        o_chars = _normalize_for_comparison(o_text)
         is_cjk = _has_cjk(o_text)
-        matching_words: list[dict] = []
-        for wseg in whisper_segments:
-            if id(wseg) in used_whisper_ids:
-                continue
-            w_start = wseg.get("start", 0.0)
-            w_end = wseg.get("end", 0.0)
-            # Skip if completely outside the online line's time range
-            if w_start > o_end + 2.0 or w_end < o_start - 2.0:
-                continue
-            w_chars = _normalize_for_comparison(wseg.get("text", ""))
-            if not w_chars or not o_chars:
-                continue
-            # Check if this Whisper segment's text is part of the online line
-            # Use partial match: either segment contains online text or vice versa
-            ratio = SequenceMatcher(None, o_chars, w_chars).ratio()
-            if ratio > 0.3 or w_chars in o_chars or o_chars in w_chars:
-                matching_words.extend(wseg.get("words", []))
-                used_whisper_ids.add(id(wseg))
 
-        if matching_words:
-            matching_words.sort(key=lambda w: w.get("start", 0))
-            words = _map_chars_to_whisper_words(o_text, matching_words, is_cjk=is_cjk)
+        # Skip words before this line's range
+        while word_cursor < len(all_words) and all_words[word_cursor]["start"] < o_start - 1.0:
+            word_cursor += 1
+
+        # Collect words within this line's time range
+        line_words: list[dict] = []
+        scan = word_cursor
+        while scan < len(all_words) and all_words[scan]["start"] <= o_end + 1.0:
+            line_words.append(all_words[scan])
+            scan += 1
+
+        if line_words:
+            # Advance cursor past used words
+            word_cursor = scan
+            words = _map_chars_to_whisper_words(
+                o_text, line_words, is_cjk=is_cjk, line_end=o_end
+            )
             matched_count += 1
         else:
-            # No Whisper match — use LRC timestamps
+            # No Whisper words in range — use LRC timestamps
             words = _interpolate_word_timing(o_text, o_start, o_end, is_cjk=is_cjk)
 
         aligned.append({
@@ -300,10 +309,7 @@ def align_online_with_whisper_timing(
             "words": words,
         })
 
-    # Quality gate: if less than 20% of online lines matched Whisper, alignment
-    # is unreliable (probably wrong song version). Return None to trigger fallback.
-    # Threshold is low because partial alignment (online text + interpolated timing)
-    # is still better than Whisper-only text with errors.
+    # Quality gate: reject if too few online lines got Whisper timing
     if len(online_segments) > 0 and matched_count / len(online_segments) < 0.2:
         logging.info(
             "Online-Whisper alignment too low (%d/%d matched), falling back",
