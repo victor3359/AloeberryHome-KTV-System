@@ -7,7 +7,6 @@ that the frontend uses as the "correct" melody for scoring.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import subprocess

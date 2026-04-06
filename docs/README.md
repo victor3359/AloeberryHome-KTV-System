@@ -85,7 +85,7 @@ Playback:
 | Vocal Separation | Demucs htdemucs | CUDA GPU | ~30s |
 | Lyrics Transcription | faster-whisper / openai-whisper | CPU (subprocess) | ~60s |
 | Online Lyrics Correction | syncedlyrics (Lrclib/Musixmatch) | Network | ~2s |
-| Simplified -> Traditional Chinese | OpenCC (s2t) | CPU | <1s |
+| Simplified -> Traditional Chinese | OpenCC (s2t) | CPU | \<1s |
 | Reference Pitch Extraction | YIN algorithm | CPU (subprocess) | ~30s |
 
 ## Configuration

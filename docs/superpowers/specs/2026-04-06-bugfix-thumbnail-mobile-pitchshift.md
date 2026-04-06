@@ -25,8 +25,7 @@ Four user-reported issues affecting core KTV experience:
 def rename_song(self, old_path: str, new_path: str) -> None:
     with self._lock:
         self._conn.execute(
-            "UPDATE songs SET file_path = ? WHERE file_path = ?",
-            (new_path, old_path)
+            "UPDATE songs SET file_path = ? WHERE file_path = ?", (new_path, old_path)
         )
         self._conn.commit()
 ```
