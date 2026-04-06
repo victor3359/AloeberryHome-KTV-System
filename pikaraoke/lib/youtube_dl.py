@@ -33,7 +33,7 @@ def get_youtubedl_version() -> str:
     except (subprocess.CalledProcessError, FileNotFoundError, PermissionError) as e:
         logging.warning(f"Could not get yt-dlp version: {e}")
         return "Not found"
-    except Exception as e:
+    except Exception as e:  # broad catch: safety net after specific subprocess exceptions
         logging.error(f"Unexpected error getting yt-dlp version: {e}")
         return "Error"
 

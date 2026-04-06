@@ -222,7 +222,7 @@ class SongList:
                         file_path = entry.path
                         if self.is_valid_song(file_path):
                             return file_path
-        except Exception as e:
+        except OSError as e:
             logging.error(f"Error searching for song by ID {video_id} in {directory}: {e}")
         return None
 

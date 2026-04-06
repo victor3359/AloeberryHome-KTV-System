@@ -15,7 +15,7 @@ from typing import Any
 
 from pikaraoke.lib.events import EventSystem
 from pikaraoke.lib.ffmpeg import build_ffmpeg_cmd, build_multi_audio_hls_cmd
-from pikaraoke.lib.file_resolver import FileResolver, is_transcoding_required
+from pikaraoke.lib.file_resolver import FileResolver, get_tmp_dir, is_transcoding_required
 from pikaraoke.lib.preference_manager import PreferenceManager
 
 
@@ -118,7 +118,7 @@ class StreamManager:
 
         try:
             fr = FileResolver(file_path, streaming_format)
-        except Exception as e:
+        except Exception as e:  # broad catch: FileResolver can fail in many ways (zip, cdg, paths)
             error_message = _("Error resolving file: %s") % str(e)
             logging.error(error_message)
             return PlaybackResult(success=False, error=error_message)
@@ -308,7 +308,7 @@ class StreamManager:
                 import psutil
 
                 psutil.Process(self.ffmpeg_process.pid).nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
-            except Exception:
+            except (ImportError, OSError, TypeError):
                 pass
 
         # FFmpeg outputs to stderr - prevent blocking reads
@@ -405,7 +405,7 @@ class StreamManager:
             pass  # Temp dir doesn't exist yet
         except OSError as e:
             logging.warning(f"I/O error checking buffer: {e}")
-        except Exception as e:
+        except Exception as e:  # broad catch: safety net after FileNotFoundError and OSError
             logging.error(f"Unexpected error during buffering check: {e}")
 
         return False
@@ -448,7 +448,7 @@ class StreamManager:
         """Remove old HLS segments from temp directory to prevent disk growth."""
         try:
             tmp_dir = get_tmp_dir()
-        except Exception:
+        except OSError:
             return
         if not os.path.isdir(tmp_dir):
             return
@@ -488,7 +488,7 @@ class StreamManager:
                 self.ffmpeg_process.kill()
                 self.ffmpeg_process.wait()
                 logging.debug("FFmpeg process force killed")
-            except Exception as e:
+            except Exception as e:  # broad catch: terminate/kill can fail in unexpected ways
                 logging.debug(f"FFmpeg termination exception: {e}")
             finally:
                 self.ffmpeg_process = None

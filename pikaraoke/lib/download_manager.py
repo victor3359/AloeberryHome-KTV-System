@@ -195,7 +195,7 @@ class DownloadManager:
                     download_request["user"],
                     download_request["title"],
                 )
-            except Exception as e:
+            except Exception as e:  # broad catch: keeps download worker thread alive
                 logging.error(f"Error processing download: {e}")
             finally:
                 self._is_downloading = False
@@ -328,7 +328,7 @@ class DownloadManager:
                 self._events.emit("notification", _("正在處理音訊：%s") % displayed_title, "info")
                 try:
                     self._vocal_separator.process(song_path, title=displayed_title)
-                except Exception as e:
+                except Exception as e:  # broad catch: full AI pipeline (subprocess + I/O + model)
                     logging.warning("Vocal processing failed for %s: %s", song_path, e)
 
             # Auto-normalize song name: "YouTubeTitle" → "Artist - Song"
@@ -354,7 +354,7 @@ class DownloadManager:
                         ext = os.path.splitext(song_path)[1]
                         song_path = os.path.join(self._download_path, corrected + ext)
                         logging.info("Auto-renamed: %s → %s", display_name, corrected)
-                except Exception as e:
+                except (ImportError, OSError, TypeError, ValueError) as e:
                     logging.warning("Auto-rename failed: %s", e)
 
                 # Update song database with YouTube ID and thumbnail (even after rename)
@@ -381,7 +381,7 @@ class DownloadManager:
                         has_stems=int(os.path.exists(stem_base + "_instrumental.mp3")),
                         has_lyrics=int(os.path.exists(stem_base + "_karaoke.ass")),
                     )
-                except Exception as e:
+                except (ImportError, AttributeError, OSError, TypeError) as e:
                     logging.warning("DB update failed: %s", e)
 
             if enqueue:

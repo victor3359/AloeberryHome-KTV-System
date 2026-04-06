@@ -81,7 +81,7 @@ def _search_online_lyrics(title: str) -> list[dict] | None:
 
         logging.info("Found online synced lyrics: %d lines for '%s'", len(segments), clean_title)
         return segments if segments else None
-    except Exception as e:
+    except Exception as e:  # broad catch: third-party syncedlyrics can raise arbitrary exceptions
         logging.warning("Online lyrics search failed: %s", e)
         return None
 

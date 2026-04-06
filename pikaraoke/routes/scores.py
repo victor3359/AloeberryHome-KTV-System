@@ -178,7 +178,7 @@ def reprocess_song():
     def _reprocess():
         try:
             k.vocal_separator.process(song_path, title=title)
-        except Exception as e:
+        except Exception as e:  # broad catch: full AI pipeline (subprocess + I/O + model)
             import logging
 
             logging.warning("Reprocess failed for %s: %s", song_path, e)
