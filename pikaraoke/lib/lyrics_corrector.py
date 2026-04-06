@@ -203,6 +203,7 @@ def align_online_with_whisper_timing(
 
     aligned = []
     matched_count = 0
+    used_whisper_ids: set[int] = set()  # Track used Whisper segments by id
 
     for oseg in online_segments:
         o_text = oseg.get("text", "").strip()
@@ -211,10 +212,12 @@ def align_online_with_whisper_timing(
         if not o_text:
             continue
 
-        # Find best matching Whisper segment by timestamp + text similarity
+        # Find best matching Whisper segment (not already used)
         best_wseg = None
         best_score = 0.0
         for wseg in whisper_segments:
+            if id(wseg) in used_whisper_ids:
+                continue
             w_start = wseg.get("start", 0.0)
             time_dist = abs(o_start - w_start)
             if time_dist > 5.0:
@@ -225,7 +228,6 @@ def align_online_with_whisper_timing(
             if not w_chars or not o_chars:
                 continue
             ratio = SequenceMatcher(None, w_chars, o_chars).ratio()
-            # Combine: higher similarity + closer timestamp = better
             score = ratio * (1 - time_dist / 10.0)
             if score > best_score and ratio > 0.4:
                 best_score = score
@@ -234,30 +236,26 @@ def align_online_with_whisper_timing(
         is_cjk = _has_cjk(o_text)
 
         if best_wseg and best_wseg.get("words"):
-            # Use online text + Whisper word timing
+            used_whisper_ids.add(id(best_wseg))
             whisper_words = best_wseg["words"]
             w_start = whisper_words[0].get("start", o_start)
             w_end = whisper_words[-1].get("end", o_end)
 
             if is_cjk:
-                # Distribute Whisper timing range across online chars
                 words = _interpolate_word_timing(o_text, w_start, w_end, is_cjk=True)
             else:
-                # For non-CJK, try to map online words to Whisper word timing
                 online_words = o_text.split()
                 if len(online_words) == len(whisper_words):
-                    # 1:1 mapping — use Whisper timestamps with online text
                     words = [
                         {"word": ow, "start": ww["start"], "end": ww["end"]}
                         for ow, ww in zip(online_words, whisper_words)
                     ]
                 else:
-                    # Count mismatch — interpolate within Whisper's time range
                     words = _interpolate_word_timing(o_text, w_start, w_end, is_cjk=False)
 
             matched_count += 1
         else:
-            # No Whisper match — interpolate timing from LRC timestamps
+            # No Whisper match — use LRC timestamps (still accurate for line timing)
             words = _interpolate_word_timing(o_text, o_start, o_end, is_cjk=is_cjk)
 
         aligned.append({
