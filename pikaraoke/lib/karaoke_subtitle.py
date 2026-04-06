@@ -276,18 +276,22 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             line_data.append((kf_text, plain, seg_start, seg_end))
 
     # Second pass: generate two-line KTV dialogue events
+    # Alternate positions: odd lines at bottom, even lines at top
+    positions = [(active_y, preview_y), (preview_y, active_y)]
+
     for i, (kf_text, plain_text, start, end) in enumerate(line_data):
+        my_y, other_y = positions[i % 2]
         early_start = max(0, start - pre_display)
         ass_start = _format_ass_time(early_start)
         ass_end = _format_ass_time(end + 0.5)
 
-        # Active line: cream white → warm amber fill
+        # Active line: cream white → warm amber fill at this line's position
         lines.append(
             f"Dialogue: 1,{ass_start},{ass_end},Active,,0,0,0,,"
-            f"{{\\an2\\pos(1920,{active_y})}}{kf_text}"
+            f"{{\\an2\\pos(1920,{my_y})}}{kf_text}"
         )
 
-        # Preview line: show NEXT line in soft gray (no fill)
+        # Preview line: show NEXT line in soft gray at the OTHER position
         if i + 1 < len(line_data):
             _, next_plain, next_start, _ = line_data[i + 1]
             if next_plain:
@@ -295,7 +299,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 preview_end = _format_ass_time(next_start + 0.3)
                 lines.append(
                     f"Dialogue: 0,{preview_start},{preview_end},Preview,,0,0,0,,"
-                    f"{{\\an2\\pos(1920,{preview_y})}}{next_plain}"
+                    f"{{\\an2\\pos(1920,{other_y})}}{next_plain}"
                 )
 
     return "\n".join(lines) + "\n"

@@ -97,6 +97,57 @@ def _search_online_lyrics(title: str) -> list[dict] | None:
         return None
 
 
+def _map_chars_to_whisper_words(
+    online_text: str, whisper_words: list[dict], is_cjk: bool = False
+) -> list[dict]:
+    """Map online text characters to Whisper word timestamps.
+
+    Uses Whisper words as timing source, online text as display.
+    Each Whisper word's duration is subdivided across its characters,
+    then online characters inherit these per-character timings.
+    """
+    # Build per-character timing from Whisper words
+    whisper_chars: list[dict] = []
+    for ww in whisper_words:
+        w_text = ww.get("word", "").strip()
+        w_start = ww.get("start", 0.0)
+        w_end = ww.get("end", w_start + 0.1)
+        if not w_text:
+            continue
+        chars = [c for c in w_text if not c.isspace()] if is_cjk else [w_text]
+        n = len(chars)
+        dur = (w_end - w_start) / max(n, 1)
+        for j in range(n):
+            whisper_chars.append({
+                "word": chars[j],
+                "start": w_start + j * dur,
+                "end": w_start + (j + 1) * dur,
+            })
+
+    # Map online characters to Whisper character timings
+    online_chars = [c for c in online_text if not c.isspace()] if is_cjk else online_text.split()
+    if not online_chars or not whisper_chars:
+        return _interpolate_word_timing(
+            online_text,
+            whisper_words[0]["start"] if whisper_words else 0,
+            whisper_words[-1]["end"] if whisper_words else 1,
+            is_cjk,
+        )
+
+    result = []
+    for i, ch in enumerate(online_chars):
+        if i < len(whisper_chars):
+            # Use Whisper timing for this character position
+            result.append({"word": ch, "start": whisper_chars[i]["start"], "end": whisper_chars[i]["end"]})
+        else:
+            # Online has more chars than Whisper: extend from last timing
+            last = result[-1] if result else whisper_chars[-1]
+            dur = 0.1
+            result.append({"word": ch, "start": last["end"], "end": last["end"] + dur})
+
+    return result
+
+
 def _interpolate_word_timing(
     text: str, start: float, end: float, is_cjk: bool = False
 ) -> list[dict]:
@@ -238,21 +289,9 @@ def align_online_with_whisper_timing(
         if best_wseg and best_wseg.get("words"):
             used_whisper_ids.add(id(best_wseg))
             whisper_words = best_wseg["words"]
-            w_start = whisper_words[0].get("start", o_start)
-            w_end = whisper_words[-1].get("end", o_end)
 
-            if is_cjk:
-                words = _interpolate_word_timing(o_text, w_start, w_end, is_cjk=True)
-            else:
-                online_words = o_text.split()
-                if len(online_words) == len(whisper_words):
-                    words = [
-                        {"word": ow, "start": ww["start"], "end": ww["end"]}
-                        for ow, ww in zip(online_words, whisper_words)
-                    ]
-                else:
-                    words = _interpolate_word_timing(o_text, w_start, w_end, is_cjk=False)
-
+            # Map online text to Whisper's actual word timestamps
+            words = _map_chars_to_whisper_words(o_text, whisper_words, is_cjk=is_cjk)
             matched_count += 1
         else:
             # No Whisper match — use LRC timestamps (still accurate for line timing)
