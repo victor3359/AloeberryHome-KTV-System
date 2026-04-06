@@ -30,6 +30,7 @@ from pikaraoke.lib.lyrics_corrector import (  # noqa: F401  (re-exported for bac
     _correct_typos_with_online_lyrics,
     _parse_lrc_line,
     _search_online_lyrics,
+    align_online_with_whisper_timing,
 )
 
 # Lazy-check for optional dependencies
@@ -423,11 +424,19 @@ class VocalSeparator:
                     self._events.emit("processing_progress", {"stage": "歌詞校對中", "percent": 85})
                     segments = _filter_whisper_hallucinations(trans_result.segments)
 
-                    # Try online lyrics for typo correction (character-level only)
+                    # Online lyrics: prefer as primary text, fallback to typo correction
                     search_title = title or os.path.basename(song_path)
                     online_segments = _search_online_lyrics(search_title)
                     if online_segments:
-                        segments = _correct_typos_with_online_lyrics(segments, online_segments)
+                        aligned = align_online_with_whisper_timing(
+                            online_segments, segments, language or ""
+                        )
+                        if aligned:
+                            segments = aligned
+                        else:
+                            segments = _correct_typos_with_online_lyrics(
+                                segments, online_segments
+                            )
 
                     self._events.emit("processing_progress", {"stage": "產生字幕", "percent": 95})
                     ass_content = generate_karaoke_ass(segments, title)
