@@ -128,6 +128,22 @@ def _has_cjk(text: str) -> bool:
     )
 
 
+def _normalize_for_comparison(text: str) -> str:
+    """Normalize text for comparison by converting to simplified Chinese.
+
+    Online LRC may be traditional, Whisper may be simplified (or vice versa).
+    Converting both to simplified ensures consistent comparison.
+    """
+    text = re.sub(r"\s+", "", text)
+    try:
+        from opencc import OpenCC
+
+        cc = OpenCC("t2s")
+        return cc.convert(text)
+    except ImportError:
+        return text
+
+
 def _estimate_global_offset(
     online_segments: list[dict], whisper_segments: list[dict]
 ) -> float:
@@ -139,13 +155,13 @@ def _estimate_global_offset(
     """
     offsets = []
     for oseg in online_segments:
-        o_text = re.sub(r"\s+", "", oseg.get("text", ""))
+        o_text = _normalize_for_comparison(oseg.get("text", ""))
         if not o_text:
             continue
         best_ratio = 0.0
         best_offset = 0.0
         for wseg in whisper_segments:
-            w_text = re.sub(r"\s+", "", wseg.get("text", ""))
+            w_text = _normalize_for_comparison(wseg.get("text", ""))
             if not w_text:
                 continue
             ratio = SequenceMatcher(None, o_text, w_text).ratio()
@@ -204,8 +220,8 @@ def align_online_with_whisper_timing(
             if time_dist > 5.0:
                 continue
             w_text = wseg.get("text", "").strip()
-            w_chars = re.sub(r"\s+", "", w_text)
-            o_chars = re.sub(r"\s+", "", o_text)
+            w_chars = _normalize_for_comparison(w_text)
+            o_chars = _normalize_for_comparison(o_text)
             if not w_chars or not o_chars:
                 continue
             ratio = SequenceMatcher(None, w_chars, o_chars).ratio()
