@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pikaraoke.lib.karaoke_subtitle import (
+    _filter_whisper_hallucinations,
     _is_cjk_char,
     _split_cjk_word,
     generate_karaoke_ass,
@@ -99,3 +100,50 @@ class TestGenerateKaraokeAssWithCjk:
         # 2 words + 1 pad = 3 kf tags
         assert "hello" in ass
         assert "world" in ass
+
+
+class TestFilterHallucinations:
+    def _seg(self, text, start=1.0, end=3.0, no_speech_prob=0.0):
+        return {"text": text, "start": start, "end": end, "no_speech_prob": no_speech_prob}
+
+    def test_keeps_real_lyrics(self):
+        segs = [self._seg("讓我們紅塵作伴")]
+        assert len(_filter_whisper_hallucinations(segs)) == 1
+
+    def test_removes_credit_keywords(self):
+        segs = [self._seg("作詞：林夕"), self._seg("混音：someone")]
+        assert len(_filter_whisper_hallucinations(segs)) == 0
+
+    def test_removes_new_keywords(self):
+        for kw in ["主唱", "演唱", "感謝觀看", "please subscribe"]:
+            segs = [self._seg(kw)]
+            assert len(_filter_whisper_hallucinations(segs)) == 0, f"Should filter: {kw}"
+
+    def test_removes_music_symbols_only(self):
+        segs = [self._seg("♪♫♪♫")]
+        assert len(_filter_whisper_hallucinations(segs)) == 0
+
+    def test_removes_repeated_short_phrase(self):
+        segs = [self._seg("啦啦啦啦啦啦啦啦啦啦啦啦啦啦啦啦")]
+        assert len(_filter_whisper_hallucinations(segs)) == 0
+
+    def test_removes_end_marker(self):
+        for text in ["The End", "end", "終", "完"]:
+            segs = [self._seg(text)]
+            assert len(_filter_whisper_hallucinations(segs)) == 0, f"Should filter: {text}"
+
+    def test_removes_pure_numbers(self):
+        segs = [self._seg("12345")]
+        assert len(_filter_whisper_hallucinations(segs)) == 0
+
+    def test_removes_high_no_speech_prob(self):
+        segs = [self._seg("some text", no_speech_prob=0.45)]
+        assert len(_filter_whisper_hallucinations(segs)) == 0
+
+    def test_removes_single_char_short_duration(self):
+        segs = [self._seg("啊", start=1.0, end=1.5)]
+        assert len(_filter_whisper_hallucinations(segs)) == 0
+
+    def test_keeps_single_char_long_duration(self):
+        segs = [self._seg("啊", start=1.0, end=2.5)]
+        assert len(_filter_whisper_hallucinations(segs)) == 1

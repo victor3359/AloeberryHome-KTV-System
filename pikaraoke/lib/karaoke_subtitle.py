@@ -10,12 +10,22 @@ from __future__ import annotations
 import re
 
 _HALLUCINATION_KEYWORDS = [
+    # Chinese credits
     "作詞",
     "作曲",
     "編曲",
     "填詞",
     "監製",
     "製作人",
+    "主唱",
+    "演唱",
+    "原唱",
+    "翻唱",
+    "混音",
+    "錄音",
+    "母帶",
+    "出品",
+    # English credits
     "lyrics by",
     "composed by",
     "music by",
@@ -23,17 +33,38 @@ _HALLUCINATION_KEYWORDS = [
     "written by",
     "produced by",
     "directed by",
+    "mixed by",
+    "mastered by",
+    "performed by",
+    # Subtitles / metadata
     "字幕",
     "歌詞提供",
+    "字幕提供",
     "music video",
     "official mv",
+    "copyright",
+    "版權",
+    "all rights reserved",
+    # Social media / ads
     "subscribe",
     "訂閱",
     "點讚",
     "like and subscribe",
-    "copyright",
-    "版權",
-    "all rights reserved",
+    "please subscribe",
+    "like comment",
+    "subtitles",
+    "captions",
+    # Closing markers
+    "感謝觀看",
+    "感谢观看",
+    "謝謝收看",
+]
+
+_HALLUCINATION_PATTERNS = [
+    re.compile(r"^[\s.。，,、…♪♫🎵🎶─\-~]+$"),  # Only punctuation / music symbols
+    re.compile(r"(.{1,4})\1{3,}"),  # Short phrase repeated 4+ times
+    re.compile(r"^(the )?(end|fin|終|完)\.?$", re.IGNORECASE),  # End markers
+    re.compile(r"^\d+$"),  # Pure numbers
 ]
 
 
@@ -114,16 +145,25 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
             continue
 
         # Skip segments with high no_speech_prob (silence detected)
-        if seg.get("no_speech_prob", 0) > 0.5:
+        if seg.get("no_speech_prob", 0) > 0.4:
             continue
 
         # Skip suspiciously long segments (normal lyric line is 2-10s)
         if duration > 20:
             continue
 
+        # Skip single-character noise fragments
+        text_chars = re.sub(r"\s+", "", text)
+        if len(text_chars) <= 1 and duration < 1.0:
+            continue
+
         # Keyword-based hallucination detection (case-insensitive substring match)
         text_lower = text.lower()
         if any(kw in text_lower for kw in _HALLUCINATION_KEYWORDS):
+            continue
+
+        # Regex pattern-based hallucination detection
+        if any(pat.search(text) for pat in _HALLUCINATION_PATTERNS):
             continue
 
         # Track repeated text -- hallucination repeats same phrase
