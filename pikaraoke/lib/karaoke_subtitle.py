@@ -218,6 +218,10 @@ def _build_kf_text(
         cap = max(int(median * 2.5), 80)  # At least 0.8s, cap at 2.5x median
         char_data = [(ch, min(d, cap)) for ch, d in char_data]
 
+    # Recalculate seg_end from actual kf durations (not Whisper's inflated end time)
+    total_cs = sum(d for _, d in char_data)
+    seg_end = seg_start + total_cs / 100.0
+
     # Build kf tagged text
     parts: list[str] = []
     for i, (char_text, dur_cs) in enumerate(char_data):
