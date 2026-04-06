@@ -37,6 +37,42 @@ _HALLUCINATION_KEYWORDS = [
 ]
 
 
+def _is_cjk_char(ch: str) -> bool:
+    """Check if a character is CJK (Chinese, Japanese kana, Korean hangul)."""
+    cp = ord(ch)
+    return (
+        0x4E00 <= cp <= 0x9FFF  # CJK Unified Ideographs
+        or 0x3400 <= cp <= 0x4DBF  # CJK Extension A
+        or 0x3040 <= cp <= 0x30FF  # Hiragana + Katakana
+        or 0xAC00 <= cp <= 0xD7AF  # Korean Hangul syllables
+    )
+
+
+def _split_cjk_word(
+    word: str, start: float, end: float
+) -> list[tuple[str, float, float]]:
+    """Split a CJK word into per-character timing.
+
+    Each CJK character is roughly one syllable, so evenly distributing
+    the word duration gives smooth per-character fill animation.
+    Non-CJK words are returned as-is.
+    """
+    chars = list(word.strip())
+    if len(chars) <= 1:
+        return [(word, start, end)]
+
+    cjk_count = sum(1 for c in chars if _is_cjk_char(c))
+    if cjk_count < len(chars) * 0.5:
+        return [(word, start, end)]
+
+    duration = end - start
+    char_dur = duration / len(chars)
+    return [
+        (ch, start + i * char_dur, start + (i + 1) * char_dur)
+        for i, ch in enumerate(chars)
+    ]
+
+
 def _format_ass_time(seconds: float) -> str:
     """Format seconds as ASS timestamp H:MM:SS.cc."""
     h = int(seconds // 3600)
@@ -180,10 +216,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 continue
             w_start = word_info.get("start", 0.0) + timing_offset
             w_end = word_info.get("end", w_start + 0.1) + timing_offset
-            duration_cs = max(int((w_end - w_start) * 100), 10)
-            prefix = " " if len(karaoke_parts) > (1 if pad_cs > 0 else 0) else ""
-            word = _to_traditional_chinese(word)
-            karaoke_parts.append(f"{{\\kf{duration_cs}}}{prefix}{word}")
+
+            # Split CJK words into per-character timing for smooth fill
+            char_parts = _split_cjk_word(word, w_start, w_end)
+            for char_text, c_start, c_end in char_parts:
+                dur_cs = max(int((c_end - c_start) * 100), 5)
+                has_prev = len(karaoke_parts) > (1 if pad_cs > 0 else 0)
+                prefix = " " if has_prev and not _is_cjk_char(char_text[0]) else ""
+                char_text = _to_traditional_chinese(char_text)
+                karaoke_parts.append(f"{{\\kf{dur_cs}}}{prefix}{char_text}")
 
         if karaoke_parts:
             text = "".join(karaoke_parts)
