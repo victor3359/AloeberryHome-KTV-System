@@ -185,20 +185,17 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
 
 
 def _build_kf_text(
-    words: list[dict], timing_offset: float, pre_display: float
+    words: list[dict], timing_offset: float
 ) -> tuple[str, float, float]:
     """Build karaoke fill text from word-level timestamps.
 
-    Returns (kf_tagged_text, seg_start, seg_end).
+    Returns (kf_tagged_text, seg_start, seg_end). No pre-display pad —
+    Preview lines handle the advance display role.
     """
     seg_start = words[0]["start"] + timing_offset
     seg_end = words[-1]["end"] + timing_offset
-    early_start = max(0, seg_start - pre_display)
-    pad_cs = int((seg_start - early_start) * 100)
 
     parts: list[str] = []
-    if pad_cs > 0:
-        parts.append(f"{{\\kf{pad_cs}}}")
     for word_info in words:
         word = word_info.get("word", "").strip()
         if not word:
@@ -209,7 +206,7 @@ def _build_kf_text(
         char_parts = _split_cjk_word(word, w_start, w_end)
         for char_text, c_start, c_end in char_parts:
             dur_cs = max(int((c_end - c_start) * 100), 5)
-            has_prev = len(parts) > (1 if pad_cs > 0 else 0)
+            has_prev = len(parts) > 0
             prefix = " " if has_prev and not _is_cjk_char(char_text[0]) else ""
             char_text = _to_traditional_chinese(char_text)
             parts.append(f"{{\\kf{dur_cs}}}{prefix}{char_text}")
@@ -264,42 +261,47 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             start = segment.get("start", 0.0) + timing_offset
             end = segment.get("end", start + 1.0) + timing_offset
             dur_cs = max(int((end - start) * 100), 10)
-            early = max(0, start - pre_display)
-            pad_cs = int((start - early) * 100)
-            kf = f"{{\\kf{pad_cs}}}{{\\kf{dur_cs}}}{text}" if pad_cs > 0 else f"{{\\kf{dur_cs}}}{text}"
+            kf = f"{{\\kf{dur_cs}}}{text}"
             line_data.append((kf, text, start, end))
             continue
 
-        kf_text, seg_start, seg_end = _build_kf_text(words, timing_offset, pre_display)
+        kf_text, seg_start, seg_end = _build_kf_text(words, timing_offset)
         if kf_text:
             plain = _to_traditional_chinese(segment.get("text", "").strip())
             line_data.append((kf_text, plain, seg_start, seg_end))
 
-    # Second pass: generate two-line KTV dialogue events
-    # Alternate positions: odd lines at bottom, even lines at top
-    positions = [(active_y, preview_y), (preview_y, active_y)]
+    # Second pass: seamless two-line KTV alternating layout
+    # Odd lines (0,2,4..) at bottom (active_y), even lines (1,3,5..) at top (preview_y)
+    # Preview appears at same position as its future Active, so transition is in-place.
+    #
+    # Timeline:
+    #   ----A singing----  ----B singing----  ----C singing----
+    #   bottom: [A active]  [C preview gray]  [C active]
+    #   top:    [B preview]  [B active]       [D preview gray]
+    pos_list = [active_y, preview_y]
 
     for i, (kf_text, plain_text, start, end) in enumerate(line_data):
-        my_y, other_y = positions[i % 2]
-        early_start = max(0, start - pre_display)
-        ass_start = _format_ass_time(early_start)
-        ass_end = _format_ass_time(end + 0.5)
+        my_y = pos_list[i % 2]
 
-        # Active line: cream white → warm amber fill at this line's position
+        # Active: starts at singing time, ends at singing end (no padding)
+        ass_start = _format_ass_time(start)
+        ass_end = _format_ass_time(end)
         lines.append(
             f"Dialogue: 1,{ass_start},{ass_end},Active,,0,0,0,,"
             f"{{\\an2\\pos(1920,{my_y})}}{kf_text}"
         )
 
-        # Preview line: show NEXT line in soft gray at the OTHER position
+        # Preview for NEXT line: appears when THIS line starts singing,
+        # ends exactly when next line's Active starts (seamless handoff).
         if i + 1 < len(line_data):
             _, next_plain, next_start, _ = line_data[i + 1]
+            next_y = pos_list[(i + 1) % 2]
             if next_plain:
-                preview_start = _format_ass_time(early_start)
-                preview_end = _format_ass_time(next_start + 0.3)
+                preview_start = _format_ass_time(start)
+                preview_end = _format_ass_time(next_start)
                 lines.append(
                     f"Dialogue: 0,{preview_start},{preview_end},Preview,,0,0,0,,"
-                    f"{{\\an2\\pos(1920,{other_y})}}{next_plain}"
+                    f"{{\\an2\\pos(1920,{next_y})}}{next_plain}"
                 )
 
     return "\n".join(lines) + "\n"

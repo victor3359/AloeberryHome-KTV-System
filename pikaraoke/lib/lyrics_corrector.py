@@ -263,38 +263,34 @@ def align_online_with_whisper_timing(
         if not o_text:
             continue
 
-        # Find best matching Whisper segment (not already used)
-        best_wseg = None
-        best_score = 0.0
+        # Collect ALL Whisper segments overlapping this online line's time range
+        o_chars = _normalize_for_comparison(o_text)
+        is_cjk = _has_cjk(o_text)
+        matching_words: list[dict] = []
         for wseg in whisper_segments:
             if id(wseg) in used_whisper_ids:
                 continue
             w_start = wseg.get("start", 0.0)
-            time_dist = abs(o_start - w_start)
-            if time_dist > 5.0:
+            w_end = wseg.get("end", 0.0)
+            # Skip if completely outside the online line's time range
+            if w_start > o_end + 2.0 or w_end < o_start - 2.0:
                 continue
-            w_text = wseg.get("text", "").strip()
-            w_chars = _normalize_for_comparison(w_text)
-            o_chars = _normalize_for_comparison(o_text)
+            w_chars = _normalize_for_comparison(wseg.get("text", ""))
             if not w_chars or not o_chars:
                 continue
-            ratio = SequenceMatcher(None, w_chars, o_chars).ratio()
-            score = ratio * (1 - time_dist / 10.0)
-            if score > best_score and ratio > 0.4:
-                best_score = score
-                best_wseg = wseg
+            # Check if this Whisper segment's text is part of the online line
+            # Use partial match: either segment contains online text or vice versa
+            ratio = SequenceMatcher(None, o_chars, w_chars).ratio()
+            if ratio > 0.3 or w_chars in o_chars or o_chars in w_chars:
+                matching_words.extend(wseg.get("words", []))
+                used_whisper_ids.add(id(wseg))
 
-        is_cjk = _has_cjk(o_text)
-
-        if best_wseg and best_wseg.get("words"):
-            used_whisper_ids.add(id(best_wseg))
-            whisper_words = best_wseg["words"]
-
-            # Map online text to Whisper's actual word timestamps
-            words = _map_chars_to_whisper_words(o_text, whisper_words, is_cjk=is_cjk)
+        if matching_words:
+            matching_words.sort(key=lambda w: w.get("start", 0))
+            words = _map_chars_to_whisper_words(o_text, matching_words, is_cjk=is_cjk)
             matched_count += 1
         else:
-            # No Whisper match — use LRC timestamps (still accurate for line timing)
+            # No Whisper match — use LRC timestamps
             words = _interpolate_word_timing(o_text, o_start, o_end, is_cjk=is_cjk)
 
         aligned.append({
