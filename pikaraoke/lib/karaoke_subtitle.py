@@ -11,6 +11,8 @@ import re
 
 _HALLUCINATION_KEYWORDS = [
     # Chinese credits
+    "詞曲",
+    "词曲",
     "作詞",
     "作曲",
     "編曲",
@@ -118,7 +120,7 @@ def _to_traditional_chinese(text: str) -> str:
     try:
         from opencc import OpenCC
 
-        cc = OpenCC("s2t")
+        cc = OpenCC("s2twp")
         return cc.convert(text)
     except ImportError:
         return text

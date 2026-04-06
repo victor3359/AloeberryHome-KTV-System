@@ -55,6 +55,14 @@ def _clean_search_title(title: str) -> str:
     return title
 
 
+def _is_credit_line(text: str) -> bool:
+    """Check if a lyrics line is actually a credit/metadata line."""
+    from pikaraoke.lib.karaoke_subtitle import _HALLUCINATION_KEYWORDS
+
+    text_lower = text.lower().strip()
+    return any(kw in text_lower for kw in _HALLUCINATION_KEYWORDS)
+
+
 def _search_online_lyrics(title: str) -> list[dict] | None:
     """Search for synced lyrics (LRC) online. Returns parsed segments or None."""
     try:
@@ -69,6 +77,9 @@ def _search_online_lyrics(title: str) -> list[dict] | None:
         segments = []
         lines = [_parse_lrc_line(ln) for ln in lrc.splitlines() if ln.strip()]
         parsed = [p for p in lines if p and p[1]]
+
+        # Filter out credit/metadata lines (作詞, 作曲, etc.)
+        parsed = [(t, txt) for t, txt in parsed if not _is_credit_line(txt)]
 
         # Validation: reject if too few lines (likely wrong match)
         if len(parsed) < 5:
@@ -117,6 +128,38 @@ def _has_cjk(text: str) -> bool:
     )
 
 
+def _estimate_global_offset(
+    online_segments: list[dict], whisper_segments: list[dict]
+) -> float:
+    """Estimate global time offset between online LRC and Whisper timestamps.
+
+    Online LRC may be from album version while Whisper runs on the MV,
+    which often has a different intro length. This calculates the median
+    offset by matching lines purely on text similarity (ignoring time).
+    """
+    offsets = []
+    for oseg in online_segments:
+        o_text = re.sub(r"\s+", "", oseg.get("text", ""))
+        if not o_text:
+            continue
+        best_ratio = 0.0
+        best_offset = 0.0
+        for wseg in whisper_segments:
+            w_text = re.sub(r"\s+", "", wseg.get("text", ""))
+            if not w_text:
+                continue
+            ratio = SequenceMatcher(None, o_text, w_text).ratio()
+            if ratio > best_ratio and ratio > 0.6:
+                best_ratio = ratio
+                best_offset = oseg["start"] - wseg["start"]
+        if best_ratio > 0.6:
+            offsets.append(best_offset)
+    if not offsets:
+        return 0.0
+    offsets.sort()
+    return offsets[len(offsets) // 2]
+
+
 def align_online_with_whisper_timing(
     online_segments: list[dict],
     whisper_segments: list[dict],
@@ -132,6 +175,15 @@ def align_online_with_whisper_timing(
     """
     if not online_segments or not whisper_segments:
         return None
+
+    # Estimate and apply global time offset (album vs MV timing)
+    offset = _estimate_global_offset(online_segments, whisper_segments)
+    if abs(offset) > 1.0:
+        logging.info("Global LRC-Whisper offset: %.1fs, applying correction", offset)
+        online_segments = [
+            {**seg, "start": seg["start"] - offset, "end": seg["end"] - offset}
+            for seg in online_segments
+        ]
 
     aligned = []
     matched_count = 0

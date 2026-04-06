@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pikaraoke.lib.lyrics_corrector import (
+    _estimate_global_offset,
     _has_cjk,
     _interpolate_word_timing,
+    _is_credit_line,
     align_online_with_whisper_timing,
 )
 
@@ -110,3 +112,64 @@ class TestAlignOnlineWithWhisperTiming:
     def test_empty_inputs(self):
         assert align_online_with_whisper_timing([], []) is None
         assert align_online_with_whisper_timing(None, []) is None
+
+    def test_global_offset_correction(self):
+        """LRC is 25s ahead of MV — offset should be detected and corrected."""
+        online = [
+            {"start": 0.0, "end": 4.0, "text": "你在房間像幻燈片", "words": []},
+            {"start": 5.0, "end": 9.0, "text": "你在我眼裡蔓延", "words": []},
+        ]
+        whisper = [
+            {
+                "start": 25.0, "end": 29.0, "text": "你在房間像幻燈片",
+                "words": [{"word": "你在房間像幻燈片", "start": 25.0, "end": 29.0}],
+            },
+            {
+                "start": 30.0, "end": 34.0, "text": "你在我眼裡蔓延",
+                "words": [{"word": "你在我眼裡蔓延", "start": 30.0, "end": 34.0}],
+            },
+        ]
+        result = align_online_with_whisper_timing(online, whisper, "zh")
+        assert result is not None
+        # After offset correction, online timestamps should align with Whisper
+        assert result[0]["start"] > 20.0  # Should be near 25, not 0
+
+
+class TestEstimateGlobalOffset:
+    def test_detects_offset(self):
+        online = [
+            {"start": 0.0, "text": "你在房間像幻燈片"},
+            {"start": 5.0, "text": "你在我眼裡蔓延"},
+        ]
+        whisper = [
+            {"start": 25.0, "text": "你在房間像幻燈片"},
+            {"start": 30.0, "text": "你在我眼裡蔓延"},
+        ]
+        offset = _estimate_global_offset(online, whisper)
+        assert abs(offset - (-25.0)) < 1.0
+
+    def test_no_offset_when_aligned(self):
+        online = [{"start": 10.0, "text": "hello world"}]
+        whisper = [{"start": 10.5, "text": "hello world"}]
+        offset = _estimate_global_offset(online, whisper)
+        assert abs(offset) < 2.0
+
+    def test_no_match_returns_zero(self):
+        online = [{"start": 0.0, "text": "完全不同"}]
+        whisper = [{"start": 50.0, "text": "totally different"}]
+        assert _estimate_global_offset(online, whisper) == 0.0
+
+
+class TestIsCreditLine:
+    def test_chinese_credits(self):
+        assert _is_credit_line("作曲 : Lee Wei Song")
+        assert _is_credit_line("詞曲 李宗盛")
+        assert _is_credit_line("作詞：林夕")
+
+    def test_english_credits(self):
+        assert _is_credit_line("Lyrics by Someone")
+        assert _is_credit_line("Produced by XYZ")
+
+    def test_real_lyrics_not_credit(self):
+        assert not _is_credit_line("你在房間像幻燈片")
+        assert not _is_credit_line("hello world")
