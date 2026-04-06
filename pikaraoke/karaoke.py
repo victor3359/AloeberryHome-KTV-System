@@ -261,6 +261,7 @@ class Karaoke:
         self.play_stats = PlayStats(data_dir)
         self.favorites = Favorites(data_dir)
         self.song_db = SongDatabase(data_dir)
+        self.song_manager.song_db = self.song_db
 
         # Initialize queue manager
         self.queue_manager = QueueManager(

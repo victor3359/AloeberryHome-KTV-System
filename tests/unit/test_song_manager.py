@@ -102,6 +102,17 @@ class TestDelete:
         sm.delete(_native(song))
         assert not ass.exists()
 
+    def test_delete_removes_from_song_db(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        song = tmp_path / "Test---abc.mp4"
+        song.write_text("fake")
+        sm = SongManager(str(tmp_path))
+        sm.song_db = MagicMock()
+        sm.refresh_songs()
+        sm.delete(_native(song))
+        sm.song_db.remove_song.assert_called_once_with(_native(song))
+
     def test_nonexistent_file_no_error(self, tmp_path):
         sm = SongManager(str(tmp_path))
         sm.delete(_native(tmp_path / "nonexistent.mp4"))
@@ -138,3 +149,16 @@ class TestRename:
         sm.rename(_native(song), "New---abc")
         assert (tmp_path / "New---abc.ass").exists()
         assert not ass.exists()
+
+    def test_rename_updates_song_db(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        song = tmp_path / "Old---abc.mp4"
+        song.write_text("fake")
+        sm = SongManager(str(tmp_path))
+        sm.song_db = MagicMock()
+        sm.refresh_songs()
+        old_path = _native(song)
+        sm.rename(old_path, "New---abc")
+        new_path = _native(tmp_path / "New---abc.mp4")
+        sm.song_db.rename_song.assert_called_once_with(old_path, new_path)

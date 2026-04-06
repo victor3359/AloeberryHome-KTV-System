@@ -28,9 +28,10 @@ class SongManager:
     delete, rename, and display name operations.
     """
 
-    def __init__(self, download_path: str) -> None:
+    def __init__(self, download_path: str, song_db=None) -> None:
         self.download_path = download_path
         self.songs = SongList()
+        self.song_db = song_db
 
     def refresh_songs(self) -> None:
         """Scan the download directory and update the song list."""
@@ -73,6 +74,8 @@ class SongManager:
             with contextlib.suppress(FileNotFoundError):
                 os.remove(companion)
         self.songs.remove(song_path)
+        if self.song_db:
+            self.song_db.remove_song(song_path)
 
     def rename(self, song_path: str, new_name: str) -> None:
         """Rename a song file and its associated companion files if present.
@@ -102,3 +105,5 @@ class SongManager:
                 os.remove(new_comp_path)
             os.rename(companion, new_comp_path)
         self.songs.rename(song_path, new_path)
+        if self.song_db:
+            self.song_db.rename_song(song_path, new_path)
