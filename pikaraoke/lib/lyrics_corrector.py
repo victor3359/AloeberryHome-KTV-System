@@ -201,7 +201,7 @@ def align_online_with_whisper_timing(
         for wseg in whisper_segments:
             w_start = wseg.get("start", 0.0)
             time_dist = abs(o_start - w_start)
-            if time_dist > 3.0:
+            if time_dist > 5.0:
                 continue
             w_text = wseg.get("text", "").strip()
             w_chars = re.sub(r"\s+", "", w_text)
@@ -210,7 +210,7 @@ def align_online_with_whisper_timing(
                 continue
             ratio = SequenceMatcher(None, w_chars, o_chars).ratio()
             # Combine: higher similarity + closer timestamp = better
-            score = ratio * (1 - time_dist / 6.0)
+            score = ratio * (1 - time_dist / 10.0)
             if score > best_score and ratio > 0.4:
                 best_score = score
                 best_wseg = wseg
@@ -251,9 +251,11 @@ def align_online_with_whisper_timing(
             "words": words,
         })
 
-    # Quality gate: if less than 30% of online lines matched Whisper, alignment
+    # Quality gate: if less than 20% of online lines matched Whisper, alignment
     # is unreliable (probably wrong song version). Return None to trigger fallback.
-    if len(online_segments) > 0 and matched_count / len(online_segments) < 0.3:
+    # Threshold is low because partial alignment (online text + interpolated timing)
+    # is still better than Whisper-only text with errors.
+    if len(online_segments) > 0 and matched_count / len(online_segments) < 0.2:
         logging.info(
             "Online-Whisper alignment too low (%d/%d matched), falling back",
             matched_count,
