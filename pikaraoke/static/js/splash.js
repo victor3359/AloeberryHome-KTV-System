@@ -134,6 +134,16 @@ const endSong = async (reason = null, showScore = false) => {
     window._pitchMeter.hide();
   }
 
+  // Stop pitch shift AudioContext
+  if (window._pitchShiftNode) {
+    window._pitchShiftNode.disconnect();
+    window._pitchShiftNode = null;
+  }
+  if (window._pitchShiftCtx) {
+    window._pitchShiftCtx.close().catch(() => {});
+    window._pitchShiftCtx = null;
+  }
+
   if (showScore && !PikaraokeConfig.disableScore) {
     const singer = nowPlaying.now_playing_user;
     const song = nowPlaying.now_playing;
@@ -417,6 +427,16 @@ const handleNowPlayingUpdate = (np) => {
   }
 
   if (np.now_playing_url && np.now_playing_url !== currentVideoUrl) {
+    // Cleanup old AudioContext before changing song to prevent memory leaks
+    if (window._pitchShiftNode) {
+      window._pitchShiftNode.disconnect();
+      window._pitchShiftNode = null;
+    }
+    if (window._pitchShiftCtx) {
+      window._pitchShiftCtx.close().catch(() => {});
+      window._pitchShiftCtx = null;
+    }
+
     $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
     $("#progress-bar-fill").css({"width": "0%", "transition": "none"});
     $("#progress-bar-container").show();
@@ -860,12 +880,16 @@ const setupSocketEvents = () => {
   });
 
   // Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change)
+  let _pitchShiftInitializing = false;
+
   socket.on("pitch_shift", async (semitones) => {
     const video = getVideoPlayer();
     if (!video) return;
 
     // Initialize audio context and SoundTouch worklet on first use
     if (!window._pitchShiftCtx) {
+      if (_pitchShiftInitializing) return;
+      _pitchShiftInitializing = true;
       try {
         window._pitchShiftCtx = new (window.AudioContext || window.webkitAudioContext)();
         await window._pitchShiftCtx.audioWorklet.addModule("/static/js/soundtouch-worklet.js");
@@ -876,8 +900,11 @@ const setupSocketEvents = () => {
         console.log("SoundTouch AudioWorklet initialized");
       } catch (e) {
         console.warn("SoundTouch AudioWorklet failed:", e);
+        window._pitchShiftCtx = null;
+        _pitchShiftInitializing = false;
         return;
       }
+      _pitchShiftInitializing = false;
     }
 
     // Resume context if suspended (requires user interaction)
