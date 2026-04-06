@@ -191,11 +191,13 @@ def _build_kf_text(
 
     Returns (kf_tagged_text, seg_start, seg_end). No pre-display pad —
     Preview lines handle the advance display role.
+    Caps outlier durations that result from Whisper segment boundary inflation.
     """
     seg_start = words[0]["start"] + timing_offset
     seg_end = words[-1]["end"] + timing_offset
 
-    parts: list[str] = []
+    # First pass: collect (char_text, dur_cs) pairs
+    char_data: list[tuple[str, int]] = []
     for word_info in words:
         word = word_info.get("word", "").strip()
         if not word:
@@ -206,10 +208,21 @@ def _build_kf_text(
         char_parts = _split_cjk_word(word, w_start, w_end)
         for char_text, c_start, c_end in char_parts:
             dur_cs = max(int((c_end - c_start) * 100), 5)
-            has_prev = len(parts) > 0
-            prefix = " " if has_prev and not _is_cjk_char(char_text[0]) else ""
             char_text = _to_traditional_chinese(char_text)
-            parts.append(f"{{\\kf{dur_cs}}}{prefix}{char_text}")
+            char_data.append((char_text, dur_cs))
+
+    # Cap outlier durations: Whisper inflates last words at segment boundaries
+    if len(char_data) > 2:
+        durations = sorted(d for _, d in char_data)
+        median = durations[len(durations) // 2]
+        cap = max(int(median * 2.5), 80)  # At least 0.8s, cap at 2.5x median
+        char_data = [(ch, min(d, cap)) for ch, d in char_data]
+
+    # Build kf tagged text
+    parts: list[str] = []
+    for i, (char_text, dur_cs) in enumerate(char_data):
+        prefix = " " if i > 0 and not _is_cjk_char(char_text[0]) else ""
+        parts.append(f"{{\\kf{dur_cs}}}{prefix}{char_text}")
 
     return "".join(parts), seg_start, seg_end
 
