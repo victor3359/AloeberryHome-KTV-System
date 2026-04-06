@@ -13,6 +13,7 @@ let isScoreShown = false;
 const hasBgVideo = PikaraokeConfig.hasBgVideo;
 let currentVideoUrl = null;
 let hlsInstance = null;
+let _pitchShiftInitializing = false;
 let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
 let bg_playlist = [];
@@ -490,7 +491,27 @@ const handleNowPlayingUpdate = (np) => {
 
     $("#video-container").show();
 
-    video.play().catch(err => {
+    video.play().then(() => {
+      // Pre-initialize SoundTouch AudioWorklet to avoid first-use latency
+      if (!window._pitchShiftCtx && !_pitchShiftInitializing) {
+        _pitchShiftInitializing = true;
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        ctx.audioWorklet.addModule("/static/js/soundtouch-worklet.js").then(() => {
+          const source = ctx.createMediaElementSource(video);
+          const node = new AudioWorkletNode(ctx, "soundtouch-processor");
+          source.connect(node);
+          node.connect(ctx.destination);
+          window._pitchShiftCtx = ctx;
+          window._pitchShiftNode = node;
+          _pitchShiftInitializing = false;
+          console.log("SoundTouch AudioWorklet pre-initialized");
+        }).catch(e => {
+          console.warn("SoundTouch pre-init failed:", e);
+          ctx.close().catch(() => {});
+          _pitchShiftInitializing = false;
+        });
+      }
+    }).catch(err => {
       console.error('Play failed:', err);
       setTimeout(() => video.play(), 1000);
     });
@@ -880,8 +901,6 @@ const setupSocketEvents = () => {
   });
 
   // Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change)
-  let _pitchShiftInitializing = false;
-
   socket.on("pitch_shift", async (semitones) => {
     const video = getVideoPlayer();
     if (!video) return;
@@ -900,6 +919,7 @@ const setupSocketEvents = () => {
         console.log("SoundTouch AudioWorklet initialized");
       } catch (e) {
         console.warn("SoundTouch AudioWorklet failed:", e);
+        flashNotification("此瀏覽器不支援即時升降 Key", "is-warning");
         window._pitchShiftCtx = null;
         _pitchShiftInitializing = false;
         return;
