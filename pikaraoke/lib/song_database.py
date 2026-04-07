@@ -91,6 +91,23 @@ class SongDatabase:
             conn.commit()
             conn.close()
 
+    def prune_orphans(self, valid_paths: set[str]) -> int:
+        """Delete records whose file_path is not in valid_paths. Returns count removed."""
+        removed = 0
+        with self._lock:
+            conn = self._get_conn()
+            db_paths = [r[0] for r in conn.execute("SELECT file_path FROM songs").fetchall()]
+            for db_path in db_paths:
+                if db_path not in valid_paths:
+                    conn.execute("DELETE FROM songs WHERE file_path=?", (db_path,))
+                    conn.execute("DELETE FROM favorites WHERE file_path=?", (db_path,))
+                    removed += 1
+            conn.commit()
+            conn.close()
+        if removed > 0:
+            logging.info("Pruned %d orphan song records from database", removed)
+        return removed
+
     def rename_song(self, old_path: str, new_path: str) -> None:
         """Update a song's file_path in the database after a rename."""
         with self._lock:
@@ -273,8 +290,13 @@ class SongDatabase:
         songs: list[str],
         filename_from_path: Any,
         detect_language: Any = None,
-    ) -> int:
-        """Sync database with filesystem song list. Returns count of new songs added."""
+    ) -> tuple[int, int]:
+        """Sync database with filesystem song list.
+
+        Adds new songs and removes records for songs no longer on disk.
+        Returns (added_count, removed_count).
+        """
+        removed = self.prune_orphans(set(songs))
         added = 0
         for song_path in songs:
             existing = self.get_song(song_path)
@@ -320,5 +342,7 @@ class SongDatabase:
             )
             added += 1
 
-        logging.info("Song database synced: %d new songs added", added)
-        return added
+        logging.info(
+            "Song database synced: %d added, %d removed (orphaned)", added, removed
+        )
+        return added, removed

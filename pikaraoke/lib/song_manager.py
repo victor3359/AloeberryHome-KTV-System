@@ -34,8 +34,14 @@ class SongManager:
         self.song_db = song_db
 
     def refresh_songs(self) -> None:
-        """Scan the download directory and update the song list."""
+        """Scan the download directory and update the song list.
+
+        Also prunes orphaned database records (songs deleted from disk).
+        """
         self.songs.scan_directory(self.download_path)
+        if self.song_db:
+            songs_set = set(self.songs)
+            self.song_db.prune_orphans(songs_set)
 
     @staticmethod
     def filename_from_path(file_path: str, remove_youtube_id: bool = True) -> str:
