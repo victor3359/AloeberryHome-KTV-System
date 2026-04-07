@@ -140,13 +140,14 @@ def _map_chars_to_whisper_words(
         if i < len(whisper_chars):
             result.append({"word": ch, "start": whisper_chars[i]["start"], "end": whisper_chars[i]["end"]})
         else:
-            # Excess chars: distribute evenly to line_end (not 0.1s)
+            # Excess chars: use average duration of already-mapped chars
+            # (maintains same singing tempo as the first part of the line)
+            if result:
+                avg_dur = sum(r["end"] - r["start"] for r in result) / len(result)
+            else:
+                avg_dur = 0.3
             last_end = result[-1]["end"] if result else whisper_chars[-1]["end"]
-            end = line_end or last_end + 2.0
-            remaining = len(online_chars) - i
-            dur = max((end - last_end) / remaining, 0.05)
-            result.append({"word": ch, "start": last_end, "end": last_end + dur})
-            last_end += dur
+            result.append({"word": ch, "start": last_end, "end": last_end + avg_dur})
 
     return result
 

@@ -211,12 +211,13 @@ def _build_kf_text(
             char_text = _to_traditional_chinese(char_text)
             char_data.append((char_text, dur_cs))
 
-    # Cap outlier durations: Whisper inflates last words at segment boundaries
+    # Normalize outlier durations: cap too-long, floor too-short
     if len(char_data) > 2:
         durations = sorted(d for _, d in char_data)
         median = durations[len(durations) // 2]
         cap = max(int(median * 2.5), 80)  # At least 0.8s, cap at 2.5x median
-        char_data = [(ch, min(d, cap)) for ch, d in char_data]
+        floor = max(int(median * 0.3), 15)  # At least 0.15s, floor at 30% of median
+        char_data = [(ch, max(min(d, cap), floor)) for ch, d in char_data]
 
     # Recalculate seg_end from actual kf durations (not Whisper's inflated end time)
     total_cs = sum(d for _, d in char_data)
