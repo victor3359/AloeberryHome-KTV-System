@@ -279,6 +279,16 @@ class Karaoke:
             events=self.events,
             download_path=self.download_path,
         )
+        if self.vocal_separator.is_available():
+            logging.info(
+                "AI pipeline available: Demucs + %s",
+                "faster-whisper" if self.vocal_separator.is_whisper_available() else "whisper",
+            )
+        else:
+            logging.warning(
+                "AI pipeline DISABLED: demucs/whisper not installed. "
+                "Install with: uv tool install '.[ai]' --force"
+            )
 
         self.download_manager = DownloadManager(
             events=self.events,
