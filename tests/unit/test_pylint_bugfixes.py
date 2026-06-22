@@ -22,3 +22,14 @@ def test_file_resolver_drops_dead_resolved_file_path_assignment():
     src = _read(_RESOLVER)
     assert "self.resolved_file_path" not in src
     assert "self.process_file(file_path)" in src
+
+
+_PRECOMMIT = os.path.join(
+    os.path.dirname(__file__), "..", "..", "code_quality", ".pre-commit-config.yaml"
+)
+
+
+def test_pylint_hook_is_not_neutered():
+    cfg = _read(_PRECOMMIT)
+    assert "echo $PATH" not in cfg
+    assert "pylint --rcfile=code_quality/.pylintrc" in cfg

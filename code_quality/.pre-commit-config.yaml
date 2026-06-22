@@ -30,14 +30,14 @@ repos:
     name: Format Python Code
     args: [--line-length, '100']
 
-- repo: https://github.com/PyCQA/pylint
-  rev: v3.0.1
+- repo: local
   hooks:
   - id: pylint
     name: Lint Python Code
-    entry: bash -c 'echo $PATH'
+    entry: uv run --no-sync pylint --rcfile=code_quality/.pylintrc
     language: system
     types: [python]
+    files: ^pikaraoke/
 
 - repo: https://github.com/executablebooks/mdformat
   rev: 0.7.17
