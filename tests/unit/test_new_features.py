@@ -209,6 +209,23 @@ class TestKeyboardShortcuts:
         # Non-admin should not see the admin keyboard shortcut block
         assert "case 'S': $.get('/skip')" not in html
 
+    @patch("pikaraoke.routes.queue.get_karaoke_instance")
+    @patch("pikaraoke.routes.queue.get_site_name", return_value="Test")
+    @patch("pikaraoke.routes.queue.is_admin", return_value=True)
+    def test_admin_sees_new_session_button(self, _admin, _site, mock_k, full_client):
+        mock_k.return_value = self._make_mock_karaoke()
+        html = full_client.get("/queue").data.decode()
+        assert "confirm-new-session" in html
+        assert "/reset_session" in html
+
+    @patch("pikaraoke.routes.queue.get_karaoke_instance")
+    @patch("pikaraoke.routes.queue.get_site_name", return_value="Test")
+    @patch("pikaraoke.routes.queue.is_admin", return_value=False)
+    def test_non_admin_no_new_session_button(self, _admin, _site, mock_k, full_client):
+        mock_k.return_value = self._make_mock_karaoke()
+        html = full_client.get("/queue").data.decode()
+        assert "confirm-new-session" not in html
+
 
 # ---------------------------------------------------------------------------
 # Feature C: Session timer

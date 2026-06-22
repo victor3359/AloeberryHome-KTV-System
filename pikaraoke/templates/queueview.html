@@ -296,6 +296,16 @@
     $.ajax({ url: '{{ url_for("queue.delete_download_error", error_id="ERROR_ID") }}'.replace("ERROR_ID", errorId), type: 'DELETE', success: function() { window.queuePage_getDownloads(); } });
   };
 
+  {% if admin %}
+  // Confirm before starting a new session (clears queue, scores, and history)
+  $(document).off("click", ".confirm-new-session").on("click", ".confirm-new-session", function (e) {
+    e.preventDefault();
+    if (window.confirm("確定要開始新場次嗎？目前佇列、分數與歷史將被清除。")) {
+      window.location.href = this.href;
+    }
+  });
+  {% endif %}
+
   // Socket listeners
   window.socket.off("queue_update"); window.socket.on("queue_update", window.queuePage_getQueue);
   window.socket.off("now_playing"); window.socket.on("now_playing", window.queuePage_getQueue);
@@ -474,6 +484,9 @@
   </div>
   <a class="pill" style="border:1px solid var(--danger); color:var(--danger)" href="/queue/edit?action=clear">
     <i class="icon icon-trash-empty"></i> 清除
+  </a>
+  <a class="pill confirm-new-session" style="border:1px solid var(--warning); color:var(--warning)" href="{{ url_for('admin.reset_session') }}">
+    <i class="icon icon-exchange"></i> 開新一夜
   </a>
 </div>
 
