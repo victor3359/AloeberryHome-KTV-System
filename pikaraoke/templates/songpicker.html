@@ -220,9 +220,9 @@ $(function () {
 
   // ----- Mini control strip: now playing -----
   if (typeof io !== "undefined") {
-    var sock = io();
-    sock.on("now_playing", function (np) { updateMiniStrip(np); });
-    sock.on("processing_progress", function (data) {
+    var sock = window.getSocket();
+    sock.off("now_playing"); sock.on("now_playing", function (np) { updateMiniStrip(np); });
+    sock.off("processing_progress"); sock.on("processing_progress", function (data) {
       if (!data) return;
       window._lastProcessingProgress = data;
       _renderSpProgress(data);

@@ -32,3 +32,14 @@ def test_queueview_uses_socket_singleton():
     html = _read(_QUEUEVIEW)
     assert "window.socket = window.getSocket();" in html
     assert "window.socket = io()" not in html
+
+
+_SONGPICKER = os.path.join(_PKG, "templates", "songpicker.html")
+
+
+def test_songpicker_uses_socket_singleton_and_idempotent_listeners():
+    html = _read(_SONGPICKER)
+    assert "var sock = window.getSocket();" in html
+    assert "var sock = io();" not in html
+    assert 'sock.off("now_playing");' in html
+    assert 'sock.off("processing_progress");' in html
