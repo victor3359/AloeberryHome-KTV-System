@@ -12,6 +12,13 @@
   <script src="{{  url_for('static', filename='js.cookie-3.0.5.min.js') }}"></script>
   <script src="{{  url_for('static', filename='socket.io-4.8.3.min.js') }}"></script>
   <script src="{{  url_for('static', filename='spa-navigation.js') }}"></script>
+  <script type="importmap">
+  { "imports": { "core/": "/static/core/" } }
+  </script>
+  <script type="module">
+    import { notify } from "core/ui.js";
+    window.showNotification = notify;
+  </script>
   <link rel="stylesheet" href="{{  url_for('static', filename='bulma.min.css') }}">
   <link rel="stylesheet" href="{{  url_for('static', filename='modern-theme.css') }}?v=4">
   <link rel="stylesheet" href="{{  url_for('static', filename='custom.css') }}?v=3">
@@ -51,20 +58,6 @@
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(this, args), wait);
       };
-    }
-
-    function connectSocket() {
-      socket = io();
-      socket.on('connect', function() { console.log('Socket connected'); });
-      socket.on('disconnect', function() { console.log('Socket disconnected'); });
-    }
-
-    function showNotification(message, categoryClass, timeout=3000) {
-      $("#notification-alt").addClass(categoryClass)
-      $("#notification-alt div").text(message)
-      $("#notification-alt").fadeIn()
-      setTimeout(function () {$("#notification-alt").fadeOut()}, timeout)
-      setTimeout(function () {$("#notification-alt").removeClass(categoryClass)}, timeout + 750)
     }
 
     function setUserCookie(reload=false) {
