@@ -8,11 +8,10 @@ if not hasattr(werkzeug, "__version__"):
     werkzeug.__version__ = "3.0.0"
 
 from pikaraoke.routes.files import files_bp
+from pikaraoke.routes.search import search_bp
 from pikaraoke.routes.songpicker import songpicker_bp
 
-_TEMPLATE_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "pikaraoke", "templates"
-)
+_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "pikaraoke", "templates")
 
 
 @pytest.fixture
@@ -43,9 +42,6 @@ def test_browse_still_redirects_to_songpicker(client):
 def test_browse_legacy_route_removed(client):
     """/browse_legacy must no longer exist."""
     assert client.get("/browse_legacy").status_code == 404
-
-
-from pikaraoke.routes.search import search_bp
 
 
 @pytest.fixture
