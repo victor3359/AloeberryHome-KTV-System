@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 
 from pikaraoke.lib.karaoke_subtitle import (
@@ -239,3 +240,37 @@ def test_no_negative_duration_active_lines_on_overlap():
     assert active, "expected Active dialogue lines"
     for start, end in active:
         assert _ass_seconds(start) < _ass_seconds(end), f"negative/zero-duration Active line: {start} >= {end}"
+
+
+def _chorus_segs():
+    # 5 consecutive identical chorus lines (legitimate in CJK pop)
+    return [
+        {"text": "啦啦啦", "start": i * 3.0, "end": i * 3.0 + 2.0, "no_speech_prob": 0.0}
+        for i in range(5)
+    ]
+
+
+def test_aligned_path_keeps_repeated_chorus_lines():
+    kept = _filter_whisper_hallucinations(_chorus_segs(), online_aligned=True)
+    assert len(kept) == 5  # all repeated chorus lines preserved on the aligned path
+
+
+def test_aligned_path_keeps_long_lines():
+    long_seg = [{"text": "間奏後的長句", "start": 0.0, "end": 25.0, "no_speech_prob": 0.0}]
+    assert len(_filter_whisper_hallucinations(long_seg, online_aligned=True)) == 1
+
+
+def test_raw_whisper_path_still_dedupes_and_drops_long():
+    # default online_aligned=False keeps the existing raw-Whisper behavior
+    assert len(_filter_whisper_hallucinations(_chorus_segs())) < 5  # adjacent-dup dedup
+    long_seg = [{"text": "x", "start": 0.0, "end": 25.0, "no_speech_prob": 0.0}]
+    assert len(_filter_whisper_hallucinations(long_seg)) == 0  # >20s dropped
+
+
+def test_vocal_separator_uses_online_aligned_filter():
+    vs = os.path.join(
+        os.path.dirname(__file__), "..", "..", "pikaraoke", "lib", "vocal_separator.py"
+    )
+    with open(vs, encoding="utf-8") as f:
+        src = f.read()
+    assert "_filter_whisper_hallucinations(aligned, online_aligned=True)" in src

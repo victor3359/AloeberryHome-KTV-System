@@ -126,11 +126,16 @@ def _to_traditional_chinese(text: str) -> str:
         return text
 
 
-def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
+def _filter_whisper_hallucinations(segments: list[dict], online_aligned: bool = False) -> list[dict]:
     """Filter out Whisper hallucinated segments (fake text during silence).
 
     Common hallucinations: repeated text, composer/lyricist credits,
     nonsensical repetitions during instrumental intros/outros.
+
+    When ``online_aligned`` is True the segments come from human-written online
+    lyrics (credit-line filtering still applies) so the >20s and repeat-dedup
+    rules are skipped — legitimate choruses repeat and post-interlude lines can
+    be long.
     """
     filtered = []
     seen_texts: dict[str, int] = {}
@@ -150,8 +155,9 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
         if seg.get("no_speech_prob", 0) > 0.4:
             continue
 
-        # Skip suspiciously long segments (normal lyric line is 2-10s)
-        if duration > 20:
+        # Skip suspiciously long segments (normal lyric line is 2-10s). Online lyrics
+        # legitimately have long lines after interludes, so only apply to raw Whisper.
+        if not online_aligned and duration > 20:
             continue
 
         # Skip single-character noise fragments
@@ -168,16 +174,17 @@ def _filter_whisper_hallucinations(segments: list[dict]) -> list[dict]:
         if any(pat.search(text) for pat in _HALLUCINATION_PATTERNS):
             continue
 
-        # Track repeated text -- hallucination repeats same phrase
-        normalized = re.sub(r"\s+", "", text)
-        seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
-        if seen_texts[normalized] > 3:
-            continue
-
-        # Skip consecutive identical lines (adjacent duplicates)
-        if normalized == prev_normalized:
-            continue
-        prev_normalized = normalized
+        # Repeat-based dedup catches Whisper hallucinations that loop the same phrase,
+        # but online lyrics legitimately repeat choruses/hooks -> skip for aligned text.
+        if not online_aligned:
+            normalized = re.sub(r"\s+", "", text)
+            seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
+            if seen_texts[normalized] > 3:
+                continue
+            # Skip consecutive identical lines (adjacent duplicates)
+            if normalized == prev_normalized:
+                continue
+            prev_normalized = normalized
 
         filtered.append(seg)
 

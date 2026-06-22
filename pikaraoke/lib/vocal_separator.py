@@ -434,7 +434,7 @@ class VocalSeparator:
                         )
                         if aligned:
                             # Aligned text is from online lyrics; filter credit lines
-                            segments = _filter_whisper_hallucinations(aligned)
+                            segments = _filter_whisper_hallucinations(aligned, online_aligned=True)
                         else:
                             # Alignment failed; filter Whisper then correct typos
                             segments = _filter_whisper_hallucinations(raw_segments)
