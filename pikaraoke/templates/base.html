@@ -18,7 +18,9 @@
   </script>
   <script type="module">
     import { notify } from "core/ui.js";
+    import * as nowPlayingStore from "core/nowPlayingStore.js";
     window.showNotification = notify;
+    window.nowPlayingStore = nowPlayingStore;
   </script>
   <link rel="stylesheet" href="{{  url_for('static', filename='bulma.min.css') }}">
   <link rel="stylesheet" href="{{  url_for('static', filename='modern-theme.css') }}?v=4">
