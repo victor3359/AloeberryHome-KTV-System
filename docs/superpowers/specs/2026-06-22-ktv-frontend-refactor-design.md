@@ -42,7 +42,7 @@ AloeberryHome KTV System 是 PiKaraoke 1.19.0 的重度客製分支。後端 AI 
 - 改用前端框架（React/Vue/Svelte）。
 - 控制端點伺服器端授權 —— **接受的家用 LAN/信任環境風險**。
 - 完整多語系（改為繁中單語）。
-- 後端架構大改（僅做第 7 節列出的針對性、加欄位式修正）。
+- 後端架構大改（僅做第 7–8 節列出的針對性、加欄位式修正）。
 - 內容灌入為正式營運工作；本案僅 seed 少量測試歌曲以供驗證。
 
 ---
@@ -64,7 +64,7 @@ AloeberryHome KTV System 是 PiKaraoke 1.19.0 的重度客製分支。後端 AI 
 
 ## 4. 架構總覽
 
-1. **後端不動原則**：保留 Flask/Jinja + socket/JSON 契約為穩定 API 邊界；只做第 7 節的加欄位式小修正，**不破壞既有 750 測試**。
+1. **後端不動原則**：保留 Flask/Jinja + socket/JSON 契約為穩定 API 邊界；只做第 7–8 節的加欄位式小修正，**不破壞既有 750 測試**。
 2. **MPA 取代 SPA loader**：刪除 `spa-navigation.js` 的 `executeScripts` 模型。手機遙控每頁正常整頁載入；splash 為單一長期頁、不導航。
 3. **原生 ES 模組 + import map**：以 `<script type="module">` 載入；用 import map 將 vendored 函式庫（hls、subtitles-octopus、soundtouch、sortable 等）釘成本地路徑 → 離線安全、零 build、可 lint/快取。
 4. **單一 CSS 契約**：以 `modern-theme.css`（506 token）為地基擴充成 Neon Night 設計系統；將 708 行 inline `<style>` 與 182 個 inline `style=` 全數遷移上 token，消除 `!important` 特異性戰爭。
@@ -92,7 +92,7 @@ AloeberryHome KTV System 是 PiKaraoke 1.19.0 的重度客製分支。後端 AI 
 
 ### 5.3 `queueview` inline（約 401 行）→ 遙控模組
 - `now-playing-bar`（迷你播放列，可展開完整控制）
-- `controls`（transport / 原唱伴奏 / 移調 / 投票跳過）
+- `controls`（transport / 原唱伴奏 / 移調 / 投票跳過〔選配，非核心〕）
 - `queue-view`（拖曳重排、公平排隊）
 - `browse`（songpicker 清單 + 搜尋 + 語言/歌手篩選）
 - `favorites`
@@ -115,8 +115,8 @@ AloeberryHome KTV System 是 PiKaraoke 1.19.0 的重度客製分支。後端 AI 
 - `playing` 角標：正在播放（左上）、已唱計時 + 接下來（右上）、音準條（右側，演唱中才出現）、QR 掃碼點歌（右下）、今晚最高分（左下）；歌詞壓下三分之一、最大字、青色逐字填色。
 
 ### 6.2 手機遙控（找歌優先）
-- 底部分頁：**點歌 / 排隊 / 計分 / 更多**；常駐迷你播放列（點開 → transport、原唱/伴奏、Key 移調、投票跳過）。
-- **點歌**：搜尋 + 語言/歌手篩選 + 歌列（＋排隊、♥最愛）；本地 + YouTube 結果與下載進度。
+- 底部分頁：**點歌 / 排隊 / 計分 / 更多**；常駐迷你播放列（點開 → transport、原唱/伴奏、Key 移調；投票跳過為選配、非核心）。
+- **點歌**：搜尋 + 語言/歌手篩選 + 歌列（＋排隊、♥最愛）；本地 + YouTube 結果與下載進度。修正目前 O(n) 的 Jinja 搜尋反模式；超大歌庫的虛擬捲動列為選配。
 - **排隊**：佇列（拖曳重排、公平排隊橫幅、清空確認）。
 - **計分**：今晚排行榜 + 播放歷史。
 - **更多**：設定/管理（手風琴）、歌庫管理、批次改名、reprocess（單曲 + 批次處理 staging）、開新一夜 + 場次總結入口、推薦「猜你想唱」。
@@ -179,7 +179,7 @@ AloeberryHome KTV System 是 PiKaraoke 1.19.0 的重度客製分支。後端 AI 
 2. 共用核心 `core/`（socket / store / strings / song-row）就位。
 3. 一次重構一個面：先 splash 模組化（高風險，配手動清單細測），再遙控各頁。
 4. 每步 pytest + 手動驗證。
-5. **先處理 staging 數首歌 seed 出測試庫**，讓評分/推薦/虛擬捲動有資料可驗。
+5. **先處理 staging 數首歌 seed 出測試庫**，讓評分/推薦/大歌庫清單表現有資料可驗。
 
 ---
 
