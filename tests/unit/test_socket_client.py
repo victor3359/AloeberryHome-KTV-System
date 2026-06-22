@@ -23,3 +23,12 @@ def test_base_html_loads_socket_client_as_classic_script():
     # before deferred ES modules run, so the tag must not be type="module".
     tag = base.split("core/socketClient.js")[1].split(">")[0]
     assert 'type="module"' not in tag
+
+
+_QUEUEVIEW = os.path.join(_PKG, "templates", "queueview.html")
+
+
+def test_queueview_uses_socket_singleton():
+    html = _read(_QUEUEVIEW)
+    assert "window.socket = window.getSocket();" in html
+    assert "window.socket = io()" not in html

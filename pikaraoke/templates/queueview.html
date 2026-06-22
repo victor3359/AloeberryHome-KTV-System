@@ -5,7 +5,7 @@
 
   function escape(str) { return encodeURIComponent(str); }
 
-  if (typeof window.socket === 'undefined') { window.socket = io(); }
+  if (typeof window.socket === 'undefined') { window.socket = window.getSocket(); }
   if (typeof window.queuePageState === 'undefined') {
     window.queuePageState = { queue: [], previousQueue: null, nowPlaying: null, previousNowPlaying: null };
   }
