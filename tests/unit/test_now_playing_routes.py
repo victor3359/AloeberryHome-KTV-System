@@ -41,6 +41,7 @@ class TestNowPlayingApiContract:
         mock_karaoke = MagicMock()
         mock_karaoke.get_now_playing.return_value = {
             "now_playing": "Artist - Song",
+            "now_playing_filename": "/songs/Artist - Song.mp4",
             "now_playing_user": "TestUser",
             "now_playing_duration": 180,
             "now_playing_transpose": 0,
@@ -59,6 +60,7 @@ class TestNowPlayingApiContract:
         data = json.loads(response.data)
         # Verify all required fields for home/splash page
         assert "now_playing" in data
+        assert "now_playing_filename" in data
         assert "now_playing_user" in data
         assert "now_playing_duration" in data
         assert "now_playing_transpose" in data

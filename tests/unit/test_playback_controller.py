@@ -274,6 +274,18 @@ class TestPlaybackControllerGetNowPlaying:
         assert state["now_playing_transpose"] == 2
         assert state["is_paused"] is False
 
+    def test_get_now_playing_includes_filename(self, test_prefs):
+        """get_now_playing must surface now_playing_filename for mic scoring."""
+        events = EventSystem()
+        filename_fn = lambda x, remove_youtube_id=True: x
+
+        pc = PlaybackController(test_prefs, events, filename_fn)
+        pc.now_playing_filename = "/songs/Artist - Song.mp4"
+
+        state = pc.get_now_playing()
+
+        assert state["now_playing_filename"] == "/songs/Artist - Song.mp4"
+
 
 class TestPlaybackControllerResetNowPlaying:
     """Tests for PlaybackController.reset_now_playing method."""

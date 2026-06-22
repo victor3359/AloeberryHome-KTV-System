@@ -227,6 +227,7 @@ class PlaybackController:
         with self._lock:
             return {
                 "now_playing": self.now_playing,
+                "now_playing_filename": self.now_playing_filename,
                 "now_playing_user": self.now_playing_user,
                 "now_playing_user2": self.now_playing_user2,
                 "now_playing_duration": self.now_playing_duration,
