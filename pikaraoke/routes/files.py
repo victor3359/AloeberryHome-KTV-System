@@ -5,12 +5,9 @@ from __future__ import annotations
 import logging
 import os
 import re
-import unicodedata
-from urllib.parse import unquote
 
 import flask_babel
 from flask import flash, redirect, render_template, request, url_for
-from flask_paginate import Pagination, get_page_parameter
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
