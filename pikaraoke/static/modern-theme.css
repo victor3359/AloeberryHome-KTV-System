@@ -10,30 +10,32 @@
    -------------------------------------------------------------------------- */
 :root {
     /* Background */
-    --bg-base: #0a0a0f;
+    --bg-base: #0a0a12;
     --bg-surface: rgba(255, 255, 255, 0.05);
     --bg-surface-strong: rgba(255, 255, 255, 0.08);
     --bg-surface-hover: rgba(255, 255, 255, 0.1);
 
     /* Text */
-    --text-primary: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --text-tertiary: #64748b;
+    --text-primary: #ffffff;
+    --text-secondary: #9aa3b5;
+    --text-tertiary: #7c8499;
 
     /* Accent */
-    --accent-gradient: linear-gradient(135deg, #7c3aed, #06b6d4);
-    --accent-purple: #7c3aed;
-    --accent-cyan: #06b6d4;
+    --accent-gradient: linear-gradient(135deg, #22d3ee, #e879f9);
+    --accent-purple: #a78bfa;
+    --accent-cyan: #22d3ee;
+    --accent-2: #e879f9;
+    --accent-violet: #a78bfa;
 
     /* Status */
-    --color-success: #10b981;
+    --color-success: #34d399;
     --color-danger: #ef4444;
-    --color-warning: #f59e0b;
+    --color-warning: #facc15;
 
     /* Borders */
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-medium: rgba(255, 255, 255, 0.12);
-    --border-accent: rgba(124, 58, 237, 0.4);
+    --border-accent: rgba(34, 211, 238, 0.4);
 
     /* Radii */
     --radius-card: 12px;
@@ -49,13 +51,15 @@
     --mini-player-height: 56px;
 
     /* Glass */
+    --panel: rgba(255, 255, 255, 0.06);
+    --panel-border: rgba(255, 255, 255, 0.12);
     --glass-blur: 12px;
     --glass-blur-strong: 16px;
     --glass-bg: rgba(255, 255, 255, 0.05);
     --glass-border: rgba(255, 255, 255, 0.08);
 
     /* Shadows */
-    --shadow-glow: 0 0 20px rgba(124, 58, 237, 0.15);
+    --shadow-glow: 0 0 20px rgba(34, 211, 238, 0.18);
     --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.3);
     --shadow-dropdown: 0 8px 32px rgba(0, 0, 0, 0.5);
 
