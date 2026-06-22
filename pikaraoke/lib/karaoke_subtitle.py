@@ -305,9 +305,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         # Active: starts when position is free, ends at singing end
         actual_start = max(start, pos_free_at[my_y])
-        pos_free_at[my_y] = end
+        # When the row was busy past this line's own end, shift the End by the same
+        # delay so it preserves the fill duration instead of producing Start>End (which
+        # libass renders for zero frames -> the whole lyric line silently vanishes).
+        display_end = max(end, actual_start + (end - start))
+        pos_free_at[my_y] = display_end
         lines.append(
-            f"Dialogue: 1,{_format_ass_time(actual_start)},{_format_ass_time(end)},Active,,0,0,0,,"
+            f"Dialogue: 1,{_format_ass_time(actual_start)},{_format_ass_time(display_end)},Active,,0,0,0,,"
             f"{{\\an2\\pos(1920,{my_y})}}{kf_text}"
         )
 

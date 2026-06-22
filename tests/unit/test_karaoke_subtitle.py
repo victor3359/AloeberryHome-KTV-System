@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pikaraoke.lib.karaoke_subtitle import (
     _filter_whisper_hallucinations,
     _is_cjk_char,
@@ -214,3 +216,26 @@ class TestFilterHallucinations:
     def test_keeps_single_char_long_duration(self):
         segs = [self._seg("啊", start=1.0, end=2.5)]
         assert len(_filter_whisper_hallucinations(segs)) == 1
+
+
+def _ass_seconds(t):
+    h, m, s = t.split(":")
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def test_no_negative_duration_active_lines_on_overlap():
+    """A line whose row is still busy past its own end must NOT be emitted with
+    Start>End (which libass renders for zero frames -> the line silently vanishes)."""
+    segments = [
+        # seg0 occupies row active_y for ~6s
+        {"words": [{"word": c, "start": j * 0.6, "end": j * 0.6 + 0.6}
+                   for j, c in enumerate("一二三四五六七八九十")]},
+        {"words": [{"word": "甲", "start": 0.1, "end": 0.4}]},
+        # seg2 lands on the same row (active_y) but is short + early -> used to get Start>End
+        {"words": [{"word": "乙", "start": 0.2, "end": 0.5}]},
+    ]
+    ass = generate_karaoke_ass(segments, timing_offset=0.0)
+    active = re.findall(r"^Dialogue:\s*\d+,([^,]+),([^,]+),Active,", ass, re.M)
+    assert active, "expected Active dialogue lines"
+    for start, end in active:
+        assert _ass_seconds(start) < _ass_seconds(end), f"negative/zero-duration Active line: {start} >= {end}"
