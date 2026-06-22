@@ -41,5 +41,6 @@ def test_songpicker_uses_socket_singleton_and_idempotent_listeners():
     html = _read(_SONGPICKER)
     assert "var sock = window.getSocket();" in html
     assert "var sock = io();" not in html
-    assert 'sock.off("now_playing");' in html
+    # now_playing is no longer bound directly; the store owns it
+    assert 'sock.off("now_playing");' not in html
     assert 'sock.off("processing_progress");' in html

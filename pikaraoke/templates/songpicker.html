@@ -244,7 +244,7 @@ $(function () {
   // ----- Mini control strip: now playing -----
   if (typeof io !== "undefined") {
     var sock = window.getSocket();
-    sock.off("now_playing"); sock.on("now_playing", function (np) { updateMiniStrip(np); });
+    window.nowPlayingStore.subscribe("songpicker-mini", updateMiniStrip);
     sock.off("processing_progress"); sock.on("processing_progress", function (data) {
       if (!data) return;
       window._lastProcessingProgress = data;
@@ -265,10 +265,6 @@ $(function () {
         setTimeout(function() { $("#sp-processing").fadeOut(); }, 5000);
       }
     }
-    // Initial load
-    $.get("{{ url_for('now_playing.now_playing') }}", function (data) {
-      updateMiniStrip(JSON.parse(data));
-    });
   }
   function updateMiniStrip(np) {
     if (!np || !np.now_playing) {
