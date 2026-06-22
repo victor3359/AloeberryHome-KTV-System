@@ -10,7 +10,6 @@
     const config = {
         contentSelector: '.page-content',
         linkSelector: 'a[href]', // Intercept all links, not just navbar
-        notificationSelector: '#notification-alt',
         scrollBehavior: 'smooth'
     };
 
@@ -378,9 +377,6 @@
                 // Update current path
                 currentPath = url;
 
-                // Show success notification (optional, can be commented out)
-                // showNotification('Page loaded', 'is-success', 500);
-
             } else {
                 console.error('Could not find content container in response');
                 // Fallback to normal navigation
@@ -589,27 +585,6 @@
 
         // Note: We don't disconnect socket.io as it should persist across page changes
         // The socket connection is maintained globally
-    }
-
-    /**
-     * Show a notification message
-     * @param {string} message
-     * @param {string} categoryClass
-     * @param {number} timeout
-     */
-    function showNotification(message, categoryClass, timeout = 3000) {
-        const notification = $(config.notificationSelector);
-        notification.addClass(categoryClass);
-        notification.find('div').text(message);
-        notification.fadeIn();
-
-        setTimeout(function() {
-            notification.fadeOut();
-        }, timeout);
-
-        setTimeout(function() {
-            notification.removeClass(categoryClass);
-        }, timeout + 750);
     }
 
     // Initialize when DOM is ready

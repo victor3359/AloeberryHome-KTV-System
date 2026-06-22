@@ -22,3 +22,4 @@ def test_neon_night_new_tokens_added():
     assert "--accent-2: #e879f9;" in css
     assert "--accent-violet: #a78bfa;" in css
     assert "--panel: rgba(255, 255, 255, 0.06);" in css
+    assert "--panel-border: rgba(255, 255, 255, 0.12);" in css
