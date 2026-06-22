@@ -187,6 +187,29 @@ $(function () {
     });
   });
 
+  // ----- Favorites toggle -----
+  $(document).off("click", ".sp-fav-toggle").on("click", ".sp-fav-toggle", function () {
+    var btn = this;
+    setUserCookie();
+    var user = Cookies.get("user");
+    var song = $(btn).attr("data-song");
+    $.ajax({
+      url: "{{ url_for('scores.toggle_favorite') }}",
+      type: "POST",
+      contentType: "application/json",
+      data: JSON.stringify({ user: user, filename: song }),
+      success: function (resp) {
+        if (resp && resp.ok) {
+          if (resp.is_favorite) {
+            $(btn).addClass("sp-pill--active").text("已收藏");
+          } else {
+            $(btn).removeClass("sp-pill--active").text("收藏");
+          }
+        }
+      },
+    });
+  });
+
   // ----- YouTube download -----
   $(document).on("click", ".yt-download-btn", function (e) {
     e.preventDefault();
@@ -490,6 +513,7 @@ $(function () {
         <span class="sp-song-card__plays">{{ plays }}次</span>
         {% endif %}
       </div>
+      <button type="button" class="sp-pill sp-fav-toggle{% if song in user_favorites %} sp-pill--active{% endif %}" data-song="{{ song }}">{% if song in user_favorites %}已收藏{% else %}收藏{% endif %}</button>
       {% if song in queue_files %}
         <span class="sp-song-card__queued"><i class="icon icon-ok"></i></span>
       {% else %}
