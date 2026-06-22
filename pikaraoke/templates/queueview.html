@@ -379,7 +379,10 @@
       $(this).addClass("active");
     });
     $(".mini-player").click(function(e) {
-      if ($(e.target).closest('.mini-player__btn').length === 0) toggleControlPanel();
+      // Exclude the transport buttons AND the 原唱/伴奏 audio-mode buttons: clicking those
+      // must not open/toggle the control-panel drawer (the audio-mode handler is delegated on
+      // document, so its stopPropagation fires too late to stop this direct .mini-player handler).
+      if ($(e.target).closest('.mini-player__btn, .mini-player__audio-mode').length === 0) toggleControlPanel();
     });
 
     // Control panel actions
