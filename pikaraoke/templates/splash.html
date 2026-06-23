@@ -32,7 +32,7 @@
     scorePhrasesUrl: "{{ url_for('splash.get_score_phrases') }}",
   };
 </script>
-<script src="{{ url_for('static', filename='js/splash.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/splash.js') }}"></script>
 {% endblock %} {% block body %}
 <div id="top-container" class="overlay">
 <i class="icon icon-mic-1 is-invisible" style="position: absolute" title="Current singer"></i>
@@ -269,7 +269,6 @@
 </audio>
 
 <script src="{{  url_for('static', filename='hls-1.6.15.min.js') }}"></script>
-<script src="{{  url_for('static', filename='screensaver.js') }}"></script>
 <script src="{{  url_for('static', filename='fireworks.js') }}"></script>
 <script src="{{  url_for('static', filename='score.js') }}"></script>
 

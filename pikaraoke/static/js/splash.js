@@ -1,3 +1,4 @@
+import { startScreensaver, stopScreensaver } from "/static/screensaver.js";
 let socket = io();
 let mouseTimer = null;
 let cursorVisible = false;
@@ -120,6 +121,7 @@ const handleConfirmation = () => {
   updateBackgroundMediaState(true);
   loadNowPlaying();
 };
+window.handleConfirmation = handleConfirmation;
 
 const hideVideo = () => {
   $("#video-container").hide();
@@ -326,13 +328,13 @@ const setupScreensaver = () => {
         if (screensaver.style.visibility === 'hidden') {
           screensaver.style.visibility = 'visible';
           playBGVideo(false);
-          startScreensaver(); // depends on upstream screensaver.js import
+          startScreensaver();
         }
         if (idleTime > screensaverTimeoutSeconds + 36000) idleTime = screensaverTimeoutSeconds;
       } else {
         if (screensaver.style.visibility === 'visible') {
           screensaver.style.visibility = 'hidden';
-          stopScreensaver(); // depends on upstream screensaver.js import
+          stopScreensaver();
           updateBackgroundMediaState(true);
         }
       }

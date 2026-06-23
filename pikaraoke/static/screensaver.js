@@ -1,3 +1,5 @@
+// ES module: imported by splash.js. Do NOT load this with a classic <script src> — the export
+// keywords below are a SyntaxError in classic script context.
 let x = 0,
   y = 0,
   dirX = 1,
@@ -48,12 +50,12 @@ function animate() {
   }, 1000 / fps);
 }
 
-function startScreensaver() {
+export function startScreensaver() {
   animationRunning = true;
   animationId = window.requestAnimationFrame(animate);
 }
 
-function stopScreensaver() {
+export function stopScreensaver() {
   animationRunning = false;
   window.cancelAnimationFrame(animationId);
 }
