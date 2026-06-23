@@ -18,7 +18,7 @@ let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
 let bg_playlist = [];
 let bgMediaResumeTimeout = null;
-let scoreReviews = {
+window.scoreReviews = {
   low: ["Better luck next time!"],
   mid: ["Not bad!"],
   high: ["Great job!"],
@@ -864,7 +864,7 @@ const setupSocketEvents = () => {
   socket.on("now_playing", handleNowPlayingUpdate);
   socket.on("preferences_update", applyPreferenceUpdate);
   socket.on("preferences_reset", applyPreferencesReset);
-  socket.on("score_phrases_update", (phrases) => { scoreReviews = phrases; });
+  socket.on("score_phrases_update", (phrases) => { window.scoreReviews = phrases; });
 
   socket.on("leaderboard", (data) => {
     const medals = ["1st", "2nd", "3rd"];

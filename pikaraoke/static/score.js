@@ -4,11 +4,11 @@ function getScoreData(scoreValue) {
   }
 
   if (scoreValue < 30) {
-    return { applause: "applause-l.mp3", review: randomPhrase(scoreReviews.low) };
+    return { applause: "applause-l.mp3", review: randomPhrase(window.scoreReviews.low) };
   } else if (scoreValue < 60) {
-    return { applause: "applause-m.mp3", review: randomPhrase(scoreReviews.mid) };
+    return { applause: "applause-m.mp3", review: randomPhrase(window.scoreReviews.mid) };
   } else {
-    return { applause: "applause-h.mp3", review: randomPhrase(scoreReviews.high) };
+    return { applause: "applause-h.mp3", review: randomPhrase(window.scoreReviews.high) };
   }
 }
 
@@ -60,7 +60,7 @@ async function rotateScore(scoreTextElement, duration) {
 async function startScore(staticPath, preCalculatedScore) {
   try {
     const r = await fetch(PikaraokeConfig.scorePhrasesUrl);
-    scoreReviews = await r.json();
+    window.scoreReviews = await r.json();
   } catch (_e) {
     // Network failure: keep the last successfully fetched phrases
   }
