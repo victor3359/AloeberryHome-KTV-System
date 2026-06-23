@@ -84,44 +84,48 @@
   };
 
   // --- Queue Functions ---
+
+  // Re-render the queue list from current cached state (queue + now-playing).
+  // Shared by the queue-update fetch and the now-playing store callback.
+  function rerenderQueueList() {
+    var table = document.getElementById('queue-list');
+    if (table && table.sortableInstance) {
+      table.sortableInstance.destroy();
+      table.sortableInstance = null;
+    }
+    $("#queue-list").html(generateQueueHTML());
+    window.initSortable();
+    if (window.highlightAfterRefresh) {
+      var fileToHighlight = window.highlightAfterRefresh;
+      window.highlightAfterRefresh = null;
+      $('.queue-song-options-btn').each(function() {
+        if (decodeURIComponent($(this).data('file')) === fileToHighlight) {
+          $(this).closest('.queue-item').addClass('row-moved');
+        }
+      });
+    }
+  }
+
+  // Queue-only fetch. Now-playing arrives via the nowPlayingStore subscription.
   window.queuePage_getQueue = function() {
     if ($('#queue-list').length === 0) return;
-    $.when(
-      $.get('{{ url_for("queue.get_queue") }}'),
-      $.get('{{ url_for("now_playing.now_playing") }}')
-    ).done(function(queueResp, nowPlayingResp) {
-      var newQueue = JSON.parse(queueResp[0]);
-      var newNowPlaying = nowPlayingResp[0] ? JSON.parse(nowPlayingResp[0]) : null;
-      var queueChanged = !isEqual(newQueue, window.queuePageState.previousQueue);
-      var npChanged = !isEqual(newNowPlaying, window.queuePageState.previousNowPlaying);
-      if (queueChanged || npChanged) {
-        window.queuePageState.queue = newQueue;
-        window.queuePageState.nowPlaying = newNowPlaying;
-
-        updateMiniPlayer(newNowPlaying);
-
-        var table = document.getElementById('queue-list');
-        if (table && table.sortableInstance) {
-          table.sortableInstance.destroy();
-          table.sortableInstance = null;
-        }
-        $("#queue-list").html(generateQueueHTML());
-        window.queuePageState.previousQueue = newQueue;
-        window.queuePageState.previousNowPlaying = newNowPlaying;
-        window.initSortable();
-
-        if (window.highlightAfterRefresh) {
-          var fileToHighlight = window.highlightAfterRefresh;
-          window.highlightAfterRefresh = null;
-          $('.queue-song-options-btn').each(function() {
-            if (decodeURIComponent($(this).data('file')) === fileToHighlight) {
-              $(this).closest('.queue-item').addClass('row-moved');
-            }
-          });
-        }
-      }
+    $.get('{{ url_for("queue.get_queue") }}', function(queueResp) {
+      var newQueue = JSON.parse(queueResp);
+      if (isEqual(newQueue, window.queuePageState.previousQueue)) return;
+      window.queuePageState.queue = newQueue;
+      window.queuePageState.previousQueue = newQueue;
+      rerenderQueueList();
     });
   };
+
+  // Now-playing changes drive the mini player and the now-playing row in the list.
+  function onNowPlaying(np) {
+    if (isEqual(np, window.queuePageState.previousNowPlaying)) return;
+    window.queuePageState.nowPlaying = np;
+    window.queuePageState.previousNowPlaying = np;
+    updateMiniPlayer(np);
+    rerenderQueueList();
+  }
 
   window.initSortable = function() {
     var list = document.getElementById('queue-list');
@@ -308,7 +312,7 @@
 
   // Socket listeners
   window.socket.off("queue_update"); window.socket.on("queue_update", window.queuePage_getQueue);
-  window.socket.off("now_playing"); window.socket.on("now_playing", window.queuePage_getQueue);
+  window.nowPlayingStore.subscribe("queueview", onNowPlaying);
   window.socket.off("download_started"); window.socket.on("download_started", function() { if (!window.downloadPollTimer) window.queuePage_getDownloads(); });
   window.socket.off("download_stopped"); window.socket.on("download_stopped", function() { if (window.downloadPollTimer) { clearTimeout(window.downloadPollTimer); window.downloadPollTimer = null; } window.queuePage_getDownloads(); });
   window.socket.off("separation_started"); window.socket.on("separation_started", function() {
