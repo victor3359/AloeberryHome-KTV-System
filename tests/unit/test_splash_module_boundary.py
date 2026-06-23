@@ -1,0 +1,64 @@
+import os
+import re
+
+_PKG = os.path.join(os.path.dirname(__file__), "..", "..", "pikaraoke")
+_SPLASH_JS = os.path.join(_PKG, "static", "js", "splash.js")
+_SPLASH_HTML = os.path.join(_PKG, "templates", "splash.html")
+_SCORE = os.path.join(_PKG, "static", "score.js")
+_FIREWORKS = os.path.join(_PKG, "static", "fireworks.js")
+_PITCH_ANALYZER = os.path.join(_PKG, "static", "js", "pitch-analyzer.js")
+_PITCH_METER = os.path.join(_PKG, "static", "js", "pitch-meter.js")
+
+
+def _read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def test_every_inline_handler_in_splash_html_is_window_exposed():
+    """splash.js is an ES module: its top-level functions are NOT auto-attached to window, so
+    any inline on*= handler in splash.html must call a function explicitly assigned to window
+    (e.g. `window.handleConfirmation = ...`). This generic guard fails the moment a future slice
+    adds an inline handler without the matching window binding, or removes a needed binding."""
+    html = _read(_SPLASH_HTML)
+    js = _read(_SPLASH_JS)
+    # Extract the called function name from each on*="fn(...)" attribute.
+    handlers = re.findall(r"on[A-Za-z]+=[\"']\s*([A-Za-z_$][\w$]*)\s*\(", html)
+    assert handlers, "expected at least one inline handler in splash.html to guard"
+    for fn in sorted(set(handlers)):
+        assert re.search(rf"window\.{re.escape(fn)}\s*=", js), (
+            f"inline handler {fn}() in splash.html is not exposed via `window.{fn} =` in splash.js "
+            f"-> it would throw under ES-module scope"
+        )
+
+
+def test_no_classic_helper_reads_a_bare_splash_global():
+    """The only state crossing from a classic helper into splash is score.js reading the score
+    phrases. It must go through window.scoreReviews (slice 1), never a bare global, because a
+    bare read cannot see splash.js's module-scoped bindings. Guards every classic helper that
+    runs alongside the splash module."""
+    score = _read(_SCORE)
+    fireworks = _read(_FIREWORKS)
+    # score.js reads/writes only window.scoreReviews, never bare scoreReviews.
+    assert "window.scoreReviews" in score
+    assert re.search(r"(?<!window\.)\bscoreReviews\b", score) is None
+    # fireworks.js touches no splash-owned global (only browser globals like window.innerWidth).
+    assert re.search(r"(?<!window\.)\bscoreReviews\b", fireworks) is None
+
+
+def test_pitch_helpers_only_window_attach_their_classes():
+    """pitch-analyzer.js / pitch-meter.js publish their classes on window; splash reads them as
+    bare names, which resolves in module scope because window properties are global. Lock this
+    direction so a future slice converting these to ES modules removes the window leak knowingly."""
+    pa = _read(_PITCH_ANALYZER)
+    pm = _read(_PITCH_METER)
+    assert "window.PitchAnalyzer" in pa
+    assert "window.PitchMeter" in pm
+
+
+def test_screensaver_import_specifier_is_the_static_path():
+    """The screensaver import uses the absolute static path (Flask serves /static by default;
+    there is no custom static_url_path). Pin it so a path/serving change fails loudly here rather
+    than at runtime on the TV."""
+    js = _read(_SPLASH_JS)
+    assert 'from "/static/screensaver.js"' in js
