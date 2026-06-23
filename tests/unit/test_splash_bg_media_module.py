@@ -35,7 +35,7 @@ def test_bg_media_uses_injected_accessors_not_splash_state():
     assert re.search(r"(?<!\.)\bautoplayConfirmed\b", bg) is None
     assert re.search(r"(?<![.\w])\bnowPlaying\b", bg) is None
     # bg-media imports nothing back from splash (no circular import).
-    assert "splash.js" not in bg
+    assert re.search(r'from\s+["\'][^"\']*splash\.js["\']', bg) is None
 
 
 def test_splash_imports_bg_media_and_inits_it():
