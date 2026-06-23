@@ -1,4 +1,5 @@
 import { startScreensaver, stopScreensaver } from "/static/screensaver.js";
+import { getBackgroundMusicPlayer, playBGMusic, playBGVideo, shouldBackgroundMediaPlay, updateBackgroundMediaState, setupBackgroundMusicPlayer, initBgMedia } from "/static/js/modules/bg-media.js";
 let socket = io();
 let mouseTimer = null;
 let cursorVisible = false;
@@ -9,16 +10,12 @@ let menuButtonVisible = false;
 let autoplayConfirmed = false;
 let volume = 0.85;
 const playbackStartTimeout = 10000;
-const bgMediaResumeDelay = 2000;
 let isScoreShown = false;
-const hasBgVideo = PikaraokeConfig.hasBgVideo;
 let currentVideoUrl = null;
 let hlsInstance = null;
 let _pitchShiftInitializing = false;
 let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
-let bg_playlist = [];
-let bgMediaResumeTimeout = null;
 window.scoreReviews = {
   low: ["Better luck next time!"],
   mid: ["Not bad!"],
@@ -45,6 +42,14 @@ const isMediaPlaying = (media) =>
     !media.ended &&
     media.readyState > 2
   );
+
+// Wire bg-media's injected accessors before any bg-media function (setupScreensaver,
+// setupBackgroundMusicPlayer, the now_playing handler) can run.
+initBgMedia({
+  getNowPlaying: () => nowPlaying,
+  getAutoplayConfirmed: () => autoplayConfirmed,
+  isMediaPlaying,
+});
 
 const formatElapsed = (s) => {
   const h = Math.floor(s / 3600);
@@ -211,95 +216,7 @@ const endSong = async (reason = null, showScore = false) => {
   }
 }
 
-const getBackgroundMusicPlayer = () => document.getElementById('background-music');
-const getBackgroundVideoPlayer = () => document.getElementById('bg-video');
 const getVideoPlayer = () => $("#video")[0]
-
-const getNextBgMusicSong = () => {
-  let currentSong = getBackgroundMusicPlayer().getAttribute('src');
-  let nextSong = bg_playlist[0];
-  if (currentSong) {
-    let currentIndex = bg_playlist.indexOf(currentSong);
-    if (currentIndex >= 0 && currentIndex < bg_playlist.length - 1) {
-      nextSong = bg_playlist[currentIndex + 1];
-    }
-  }
-  return nextSong;
-}
-
-const playBGMusic = async (play) => {
-  const audio = getBackgroundMusicPlayer();
-  if (play) {
-    if (PikaraokeConfig.disableBgMusic) return;
-    if (!autoplayConfirmed) return;
-    if (bg_playlist.length === 0) return;
-
-    if (!audio.getAttribute('src')) audio.setAttribute('src', getNextBgMusicSong());
-
-    if (isMediaPlaying(audio)) return;
-    audio.volume = 0;
-    if (audio.readyState <= 2) await audio.load();
-    await audio.play().catch(e => console.log("Autoplay blocked (music)"));
-    $(audio).animate({ volume: PikaraokeConfig.bgMusicVolume }, 2000);
-  } else {
-    if (audio) {
-      $(audio).animate({ volume: 0 }, 2000, () => audio.pause());
-    }
-  }
-}
-
-const playBGVideo = async (play) => {
-  const bgVideo = getBackgroundVideoPlayer();
-  const bgVideoContainer = $('#bg-video-container');
-
-  if (play) {
-    if (PikaraokeConfig.disableBgVideo) return;
-    if (!autoplayConfirmed) return;
-
-    if (isMediaPlaying(bgVideo)) return;
-    $("#bg-video").attr("src", "/stream/bg_video");
-    if (bgVideo.readyState <= 2) await bgVideo.load();
-    bgVideo.play().catch(() => console.log("Autoplay blocked (video)"));
-    bgVideoContainer.fadeIn(2000);
-  } else {
-    if (bgVideo && isMediaPlaying(bgVideo)) {
-      bgVideo.pause();
-      bgVideoContainer.fadeOut(2000);
-    }
-  }
-}
-
-const shouldBackgroundMediaPlay = () => {
-  return autoplayConfirmed &&
-    !nowPlaying.now_playing &&
-    !nowPlaying.up_next;
-};
-
-const updateBackgroundMediaState = (immediate = false) => {
-  // Clear any pending resume
-  if (bgMediaResumeTimeout) {
-    clearTimeout(bgMediaResumeTimeout);
-    bgMediaResumeTimeout = null;
-  }
-
-  if (shouldBackgroundMediaPlay()) {
-    if (immediate) {
-      playBGMusic(true);
-      if (hasBgVideo) playBGVideo(true);
-    } else {
-      bgMediaResumeTimeout = setTimeout(() => {
-        bgMediaResumeTimeout = null;
-        if (shouldBackgroundMediaPlay()) {
-          playBGMusic(true);
-          if (hasBgVideo) playBGVideo(true);
-        }
-      }, bgMediaResumeDelay);
-    }
-  } else {
-    playBGMusic(false);
-    playBGVideo(false);
-  }
-};
 
 const flashNotification = (message, categoryClass) => {
   const sn = $("#splash-notification");
@@ -616,18 +533,6 @@ const setupVideoPlayer = () => {
     },
     true
   );
-}
-
-const setupBackgroundMusicPlayer = () => {
-  $.get("/bg_playlist", function (data) {
-    if (data) bg_playlist = data;
-  });
-  const bgMusic = getBackgroundMusicPlayer();
-  bgMusic.addEventListener("ended", async () => {
-    bgMusic.setAttribute('src', getNextBgMusicSong());
-    await bgMusic.load();
-    await bgMusic.play();
-  });
 }
 
 const handleUnsupportedBrowser = () => {
