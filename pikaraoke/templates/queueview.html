@@ -352,18 +352,18 @@
     window.queuePage_getDownloads();
     window.queuePage_getQueue();
     $('.modal-background').click(function() { window.closeSongOptions(); window.closeNowPlayingOptions(); });
-    $(document).on('click', '.queue-song-options-btn', function(e) {
+    $(document).off("click.qv", ".queue-song-options-btn").on("click.qv", ".queue-song-options-btn", function(e) {
       e.preventDefault();
       openSongOptions(parseInt($(this).data('index')), decodeURIComponent($(this).data('file')), decodeURIComponent($(this).data('title')));
     });
-    $(document).on('click', '.now-playing-options-btn', function(e) { e.preventDefault(); openNowPlayingOptions(); });
+    $(document).off("click.qv", ".now-playing-options-btn").on("click.qv", ".now-playing-options-btn", function(e) { e.preventDefault(); openNowPlayingOptions(); });
 
     // Mini player controls
     $("#mini-pause-btn").click(function(e) { e.stopPropagation(); $.get('/pause'); });
     $("#mini-skip-btn").click(function(e) { e.stopPropagation(); $.get('/skip'); });
 
     // Audio mode toggle (control panel)
-    $(document).on("click", ".audio-mode-btn", function() {
+    $(document).off("click.qv", ".audio-mode-btn").on("click.qv", ".audio-mode-btn", function() {
       var mode = $(this).data("mode");
       $.get("/audio_mode/" + mode);
       $(".audio-mode-btn").removeClass("active");
@@ -371,7 +371,7 @@
       toggleControlPanel();
     });
     // Audio mode toggle (mini player bar)
-    $(document).on("click", ".audio-mode-btn-mini", function(e) {
+    $(document).off("click.qv", ".audio-mode-btn-mini").on("click.qv", ".audio-mode-btn-mini", function(e) {
       e.stopPropagation();
       var mode = $(this).data("mode");
       $.get("/audio_mode/" + mode);
@@ -400,7 +400,7 @@
 
     {% if admin %}
     // Keyboard shortcuts
-    $(document).keydown(function(e) {
+    $(document).off("keydown.qv").on("keydown.qv", function(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       switch (e.key) {
         case ' ': e.preventDefault(); $.get('/pause'); break;
