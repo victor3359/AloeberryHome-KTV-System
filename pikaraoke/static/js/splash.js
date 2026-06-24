@@ -311,7 +311,8 @@ const handleNowPlayingUpdate = (np) => {
   const subtitleUrl = np.now_playing_subtitle_url;
   if (subtitleUrl === window._currentSubtitleUrl && octopusInstance) {
     // Same subtitle file — don't destroy/recreate (prevents stutter on audio switch). Still
-    // refresh the offset (read live each timeupdate) in case the seek base changed.
+    // refresh the offset; SubtitlesOctopus reads octopusInstance.timeOffset live on each
+    // internal timeupdate, so updating it here re-aligns without a rebuild if the seek base changed.
     octopusInstance.timeOffset = subtitleOffset;
   } else {
     if (octopusInstance) {

@@ -51,6 +51,50 @@ class TestMapCharsToWhisperWords:
         starts = [r["start"] for r in result]
         assert starts == sorted(starts)              # monotonic
 
+    def test_leading_insertion_stays_monotonic_and_keeps_anchor(self):
+        """Whisper missed the line's opening syllables (leading insertion). The online-only
+        chars must NOT overrun the first anchored char's true timing (no backward fill)."""
+        whisper_words = [
+            {"word": "愛", "start": 2.0, "end": 3.0},
+            {"word": "你", "start": 3.0, "end": 4.0},
+        ]
+        result = _map_chars_to_whisper_words("我真愛你", whisper_words, is_cjk=True)
+        assert [r["word"] for r in result] == ["我", "真", "愛", "你"]
+        for k in range(1, len(result)):
+            # monotonic: no char starts before the previous char ends
+            assert result[k]["start"] >= result[k - 1]["end"] - 1e-9
+        ai = [r["word"] for r in result].index("愛")
+        assert abs(result[ai]["start"] - 2.0) < 0.01  # 愛 keeps its TRUE anchor, not pushed later
+
+    def test_contiguous_middle_insertion_stays_monotonic(self):
+        """An online-only char between two contiguous Whisper chars (no time gap) must collapse
+        to the boundary, not overrun the following anchor."""
+        whisper_words = [
+            {"word": "我", "start": 0.0, "end": 1.0},
+            {"word": "愛", "start": 1.0, "end": 2.0},  # contiguous: no gap for the inserted char
+        ]
+        result = _map_chars_to_whisper_words("我嗯愛", whisper_words, is_cjk=True)
+        assert [r["word"] for r in result] == ["我", "嗯", "愛"]
+        for k in range(1, len(result)):
+            assert result[k]["start"] >= result[k - 1]["end"] - 1e-9
+        ai = [r["word"] for r in result].index("愛")
+        assert abs(result[ai]["start"] - 1.0) < 0.01  # 愛 anchor preserved
+
+    def test_trailing_excess_chars_still_extend_forward(self):
+        """Online chars past the last Whisper char (trailing insertion) have no following anchor,
+        so they should still extend forward with real duration (not collapse to a point)."""
+        whisper_words = [
+            {"word": "我", "start": 0.0, "end": 1.0},
+            {"word": "愛", "start": 1.0, "end": 2.0},
+        ]
+        result = _map_chars_to_whisper_words("我愛你啊", whisper_words, is_cjk=True)
+        assert [r["word"] for r in result] == ["我", "愛", "你", "啊"]
+        # trailing 你/啊 get non-zero durations
+        assert result[2]["end"] > result[2]["start"]
+        assert result[3]["end"] > result[3]["start"]
+        starts = [r["start"] for r in result]
+        assert starts == sorted(starts)
+
 
 class TestCorrectTyposNoCascade:
     def test_no_cascade_on_length_mismatch(self):

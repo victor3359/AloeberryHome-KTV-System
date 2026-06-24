@@ -102,28 +102,43 @@ def _search_online_lyrics(title: str) -> list[dict] | None:
 
 
 def _interpolate_into(
-    result: list[dict], chars: list[str], span_start: float, span_end: float
+    result: list[dict],
+    chars: list[str],
+    span_start: float,
+    span_end: float,
+    ceiling: float | None = None,
 ) -> None:
-    """Append ``chars`` spread evenly across [span_start, span_end] onto ``result``.
+    """Append ``chars`` across [span_start, span_end] onto ``result``, staying monotonic.
 
-    Used for online chars with no matching Whisper char (insertions / unequal replacements):
-    they fill the time span between their anchored neighbours.
+    Used for online chars with no matching Whisper char (insertions / unequal replacements).
+    With a positive-width span they spread evenly across it. With a degenerate span (a
+    line-boundary or contiguous insertion) they collapse to the boundary point when a
+    following anchor (``ceiling``) would otherwise be overrun — overrunning would push the
+    next anchored char off its true Whisper time. Only a trailing insertion (no ceiling)
+    extends forward at the running tempo.
     """
     if not chars:
         return
-    if span_end <= span_start:
-        # No real gap (e.g. trailing excess chars): continue at the previous tempo.
+    if span_end > span_start:
+        dur = (span_end - span_start) / len(chars)
+        for k, ch in enumerate(chars):
+            result.append(
+                {"word": ch, "start": span_start + k * dur, "end": span_start + (k + 1) * dur}
+            )
+        return
+    if ceiling is None:
+        # Trailing insertion: nothing anchored follows, so extend forward at the running tempo.
         last_end = result[-1]["end"] if result else span_start
         avg = sum(r["end"] - r["start"] for r in result) / len(result) if result else 0.3
         for ch in chars:
             result.append({"word": ch, "start": last_end, "end": last_end + avg})
             last_end += avg
         return
-    dur = (span_end - span_start) / len(chars)
-    for k, ch in enumerate(chars):
-        result.append(
-            {"word": ch, "start": span_start + k * dur, "end": span_start + (k + 1) * dur}
-        )
+    # Degenerate span with a following anchor: collapse to the boundary so these chars cannot
+    # overrun (and thus displace) the next anchored char's true timing.
+    point = span_start
+    for ch in chars:
+        result.append({"word": ch, "start": point, "end": point})
 
 
 def _align_chars_by_opcodes(
@@ -154,9 +169,12 @@ def _align_chars_by_opcodes(
                 )
             continue
         # Unequal replace / pure insert: interpolate online chars across the matched span.
+        # ceiling = the next anchored Whisper char's start, so a degenerate (zero-width)
+        # insertion collapses to the boundary instead of overrunning that anchor.
         if i2 > i1:
             span_start = whisper_chars[i1]["start"]
             span_end = whisper_chars[i2 - 1]["end"]
+            ceiling = whisper_chars[i2]["start"] if i2 < len(whisper_chars) else None
         else:
             span_start = whisper_chars[i1 - 1]["end"] if i1 > 0 else whisper_chars[0]["start"]
             span_end = (
@@ -164,7 +182,8 @@ def _align_chars_by_opcodes(
                 if i1 < len(whisper_chars)
                 else whisper_chars[-1]["end"]
             )
-        _interpolate_into(result, online_chars[j1:j2], span_start, span_end)
+            ceiling = whisper_chars[i1]["start"] if i1 < len(whisper_chars) else None
+        _interpolate_into(result, online_chars[j1:j2], span_start, span_end, ceiling)
     return result
 
 
