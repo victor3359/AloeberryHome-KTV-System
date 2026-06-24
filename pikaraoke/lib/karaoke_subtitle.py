@@ -238,6 +238,10 @@ def _build_kf_text(
         cap = max(int(median * 2.5), 80)  # At least 0.8s, cap at 2.5x median
         floor = max(int(median * 0.3), 15)  # At least 0.15s, floor at 30% of median
         char_data = [(ch, max(min(d, cap), floor)) for ch, d in char_data]
+    else:
+        # Short 1-2 char lines have no median to normalize against; an inflated Whisper end
+        # would otherwise crawl. Clamp each into an absolute [0.15s, 2.5s] range.
+        char_data = [(ch, max(min(d, 250), 15)) for ch, d in char_data]
 
     # Recalculate seg_end from actual kf durations (not Whisper's inflated end time)
     total_cs = sum(d for _, d in char_data)
@@ -305,7 +309,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         kf_text, seg_start, seg_end = _build_kf_text(words, timing_offset)
         if kf_text:
-            plain = _to_traditional_chinese(segment.get("text", "").strip())
+            # Derive plain text from words when the segment has no 'text' key, so the gray
+            # preview of this line is never silently lost.
+            raw_plain = segment.get("text", "").strip() or "".join(
+                w.get("word", "").strip() for w in words
+            )
+            plain = _to_traditional_chinese(raw_plain)
             line_data.append((kf_text, plain, seg_start, seg_end))
 
     # Second pass: seamless two-line KTV alternating layout
@@ -319,6 +328,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     pos_list = [active_y, preview_y]
     # Track when each position becomes free (prevent overlap)
     pos_free_at = {active_y: 0.0, preview_y: 0.0}
+    preview_lead = 6.0  # Max seconds a gray preview line shows before its Active line starts
 
     for i, (kf_text, plain_text, start, end) in enumerate(line_data):
         my_y = pos_list[i % 2]
@@ -342,6 +352,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             if next_plain:
                 preview_begin = max(actual_start, pos_free_at[next_y])
                 preview_finish = next_start
+                # Cap how early the preview appears so it doesn't freeze across an instrumental
+                # gap (a static gray lyric hovering over silence for tens of seconds).
+                preview_begin = max(preview_begin, preview_finish - preview_lead)
                 if preview_finish > preview_begin + 0.3:
                     pos_free_at[next_y] = preview_finish
                     lines.append(

@@ -311,6 +311,43 @@ def test_aligned_path_still_drops_junk_punctuation_and_numbers():
     assert len(_filter_whisper_hallucinations(junk, online_aligned=True)) == 0
 
 
+def test_preview_lead_capped_across_instrumental_gap():
+    """A long instrumental gap must not freeze the gray preview line for tens of seconds."""
+    segments = [
+        {"words": [{"word": c, "start": j * 0.5, "end": j * 0.5 + 0.5}
+                   for j, c in enumerate("第一行")]},
+        # next line starts 40s later (instrumental break)
+        {"words": [{"word": c, "start": 40.0 + j * 0.5, "end": 40.0 + j * 0.5 + 0.5}
+                   for j, c in enumerate("第二行")]},
+    ]
+    ass = generate_karaoke_ass(segments, timing_offset=0.0)
+    previews = re.findall(r"^Dialogue:\s*\d+,([^,]+),([^,]+),Preview,", ass, re.M)
+    assert previews, "expected a Preview line"
+    for start, end in previews:
+        assert _ass_seconds(end) - _ass_seconds(start) <= 6.01  # PREVIEW_LEAD + epsilon
+
+
+def test_preview_derives_text_from_words_when_text_key_absent():
+    """A words-only segment (no 'text' key) must still produce a Preview line for the next row."""
+    segments = [
+        {"words": [{"word": c, "start": j * 0.5, "end": j * 0.5 + 0.5} for j, c in enumerate("甲乙")]},
+        {"words": [{"word": c, "start": 2.0 + j * 0.5, "end": 2.0 + j * 0.5 + 0.5}
+                   for j, c in enumerate("丙丁")]},
+    ]
+    ass = generate_karaoke_ass(segments, timing_offset=0.0)
+    previews = re.findall(r"Preview,,0,0,0,,\{[^}]*\}(.+)", ass)
+    assert any("丙" in p for p in previews), "next words-only line must still be previewed"
+
+
+def test_short_line_duration_is_clamped():
+    """A 1-char line with an inflated Whisper end must not produce an over-long crawling fill."""
+    segments = [{"words": [{"word": "喔", "start": 0.0, "end": 8.0}]}]  # 8s for one char
+    ass = generate_karaoke_ass(segments, timing_offset=0.0)
+    durs = [int(d) for d in re.findall(r"\\kf(\d+)", ass)]
+    assert durs
+    assert max(durs) <= 250  # clamped centiseconds, not 800
+
+
 def test_format_ass_time_clamps_negative_to_zero():
     """Negative seconds must clamp to 0, not emit '-1:59:59.30' which libass cannot parse."""
     from pikaraoke.lib.karaoke_subtitle import _format_ass_time
