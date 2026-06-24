@@ -855,3 +855,57 @@ class TestTranscribeTempCleanup:
         assert created, "expected a NamedTemporaryFile to be created"
         for name in created:
             assert not os.path.exists(name), f"temp file leaked: {name}"
+
+
+class _SyncThread:
+    """Runs the thread target synchronously on start() for deterministic tests."""
+
+    def __init__(self, target=None, args=(), **_kw):
+        self._target = target
+        self._args = args
+
+    def start(self):
+        self._target(*self._args)
+
+
+class TestEnsureSubtitlesAsync:
+    def test_noop_and_warns_once_when_ai_unavailable(self, separator, events):
+        notes = []
+        events.on("notification", lambda msg, *a: notes.append(msg))
+        separator.is_available = lambda: False
+        assert separator.ensure_subtitles_async("/songs/a.mp4") is False
+        assert separator.ensure_subtitles_async("/songs/b.mp4") is False
+        assert sum("未安裝" in n for n in notes) == 1  # one-time hint, not per-song spam
+
+    def test_noop_when_ass_already_exists(self, separator):
+        separator.is_available = lambda: True
+        separator.has_karaoke_ass = lambda p: True
+        separator.process = MagicMock()
+        assert separator.ensure_subtitles_async("/songs/a.mp4") is False
+        separator.process.assert_not_called()
+
+    def test_starts_background_process_when_missing(self, separator, monkeypatch):
+        monkeypatch.setattr("pikaraoke.lib.vocal_separator.threading.Thread", _SyncThread)
+        separator.is_available = lambda: True
+        separator.has_karaoke_ass = lambda p: False
+        separator.process = MagicMock()
+        assert separator.ensure_subtitles_async("/songs/a.mp4") is True
+        separator.process.assert_called_once_with("/songs/a.mp4")
+        assert "/songs/a.mp4" not in separator._pending  # cleared after worker finishes
+
+    def test_dedups_a_song_already_in_flight(self, separator):
+        separator.is_available = lambda: True
+        separator.has_karaoke_ass = lambda p: False
+        separator.process = MagicMock()
+        separator._pending.add("/songs/a.mp4")  # simulate an in-flight job
+        assert separator.ensure_subtitles_async("/songs/a.mp4") is False
+        separator.process.assert_not_called()
+
+    def test_worker_survives_process_exception(self, separator, monkeypatch):
+        monkeypatch.setattr("pikaraoke.lib.vocal_separator.threading.Thread", _SyncThread)
+        separator.is_available = lambda: True
+        separator.has_karaoke_ass = lambda p: False
+        separator.process = MagicMock(side_effect=RuntimeError("boom"))
+        # must not raise, and pending must be cleared in finally
+        assert separator.ensure_subtitles_async("/songs/a.mp4") is True
+        assert "/songs/a.mp4" not in separator._pending

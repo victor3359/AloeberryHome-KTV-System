@@ -162,6 +162,45 @@ class VocalSeparator:
         self._device = device
         self._whisper_model = whisper_model
         self._lock = threading.Lock()
+        self._pending: set[str] = set()
+        self._pending_lock = threading.Lock()
+        self._warned_unavailable = False
+
+    def ensure_subtitles_async(self, song_path: str) -> bool:
+        """Generate a missing karaoke ASS in the background, best-effort.
+
+        Covers songs that never went through the download path (manual copies, pre-existing
+        library, downloads made while the AI extra was uninstalled). Returns True when a job
+        was started. No-op (False) when AI is unavailable, the ASS already exists, or a job
+        for this song is already in flight. Deduped via the pending set; the heavy work is
+        still serialized by the pipeline lock inside process().
+        """
+        if not self.is_available():
+            if not self._warned_unavailable:
+                self._warned_unavailable = True
+                self._events.emit("notification", "未安裝 AI 套件，無法自動產生字幕", "info")
+            return False
+        if self.has_karaoke_ass(song_path):
+            return False
+        with self._pending_lock:
+            if song_path in self._pending:
+                return False
+            self._pending.add(song_path)
+        self._events.emit("notification", "背景產生字幕中…", "info")
+        threading.Thread(
+            target=self._subtitle_worker, args=(song_path,), daemon=True, name="subtitle-gen"
+        ).start()
+        return True
+
+    def _subtitle_worker(self, song_path: str) -> None:
+        """Background worker: generate subtitles, always clearing the pending marker."""
+        try:
+            self.process(song_path)
+        except Exception as e:  # broad catch: full AI pipeline (subprocess + I/O + model)
+            logging.warning("Background subtitle generation failed for %s: %s", song_path, e)
+        finally:
+            with self._pending_lock:
+                self._pending.discard(song_path)
 
     def is_available(self) -> bool:
         """Check if vocal separation dependencies are installed."""

@@ -664,6 +664,11 @@ class Karaoke:
                     if song_title:
                         self.play_stats.increment(song_title)
                         self.song_db.increment_play_count(song["file"])
+                    # Lazy backfill: generate subtitles in the background for any song that
+                    # lacks them (manual copies / pre-existing library / [ai]-less downloads).
+                    # No-op when [ai] is absent or the ASS already exists; appears next play.
+                    self.vocal_separator.ensure_subtitles_async(song["file"])
+
                     # Auto-default to instrumental if stems exist (KTV standard)
                     audio_mode = song.get("audio_mode", "original")
                     if audio_mode == "original" and self.vocal_separator.has_stems(song["file"]):
