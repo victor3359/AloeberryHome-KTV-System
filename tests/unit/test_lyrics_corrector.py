@@ -210,6 +210,49 @@ class TestAlignOnlineWithWhisperTiming:
         assert result[0]["start"] > 20.0  # Should be near 25, not 0
 
 
+class TestWrongSongRejection:
+    @staticmethod
+    def _segs(texts):
+        return [
+            {"start": i * 4.0, "end": i * 4.0 + 4.0, "text": t, "words": []}
+            for i, t in enumerate(texts)
+        ]
+
+    @staticmethod
+    def _whisper(texts):
+        return [
+            {
+                "start": i * 4.0,
+                "end": i * 4.0 + 4.0,
+                "text": t,
+                "words": [{"word": t, "start": i * 4.0, "end": i * 4.0 + 4.0}],
+            }
+            for i, t in enumerate(texts)
+        ]
+
+    def test_rejects_wrong_song_lyrics(self):
+        """A wrong-song LRC whose lines never text-match the Whisper transcript must be rejected.
+        The old gate only checked word-PRESENCE in a time window, so it accepted wrong text."""
+        online = self._segs(
+            ["完全不同的歌詞甲", "完全不同的歌詞乙", "完全不同的歌詞丙", "完全不同的歌詞丁", "完全不同的歌詞戊"]
+        )
+        whisper = self._whisper(
+            ["天空很藍海洋很寬", "微風輕拂過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"]
+        )
+        assert align_online_with_whisper_timing(online, whisper, "zh") is None
+
+    def test_accepts_matching_song_with_minor_diffs(self):
+        online = self._segs(
+            ["天空很藍海洋很寬", "微風輕拂過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"]
+        )
+        whisper = self._whisper(
+            ["天空很藍海洋很寬", "微風輕撫過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"]
+        )
+        result = align_online_with_whisper_timing(online, whisper, "zh")
+        assert result is not None
+        assert len(result) == 5
+
+
 class TestEstimateGlobalOffset:
     def test_detects_offset(self):
         online = [

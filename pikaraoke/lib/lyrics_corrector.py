@@ -11,6 +11,10 @@ import logging
 import re
 from difflib import SequenceMatcher
 
+# Minimum fraction of online lyric lines that must text-match SOME Whisper line for the online
+# LRC to be trusted. Below this the title search almost certainly returned a different song.
+_MIN_LYRICS_MATCH_FRACTION = 0.30
+
 
 def _parse_lrc_line(line: str) -> tuple[float, str] | None:
     """Parse an LRC timestamp line like '[01:23.45]lyrics text'."""
@@ -283,6 +287,34 @@ def _estimate_global_offset(
     return offsets[len(offsets) // 2]
 
 
+def _lyrics_text_match_fraction(
+    online_segments: list[dict], whisper_segments: list[dict]
+) -> float:
+    """Fraction of online lines with a strong (>0.6) text match to some Whisper line.
+
+    A low fraction means the online LRC is almost certainly a DIFFERENT song (cover / live /
+    wrong title match) and should be rejected rather than shown as confidently-wrong subtitles.
+    """
+    whisper_norm = [
+        n for w in whisper_segments if (n := _normalize_for_comparison(w.get("text", "")))
+    ]
+    if not whisper_norm:
+        return 0.0
+    matched = 0
+    considered = 0
+    for oseg in online_segments:
+        o_text = _normalize_for_comparison(oseg.get("text", ""))
+        if not o_text:
+            continue
+        considered += 1
+        best = max(
+            (SequenceMatcher(None, o_text, w).ratio() for w in whisper_norm), default=0.0
+        )
+        if best > 0.6:
+            matched += 1
+    return matched / considered if considered else 0.0
+
+
 def align_online_with_whisper_timing(
     online_segments: list[dict],
     whisper_segments: list[dict],
@@ -297,6 +329,12 @@ def align_online_with_whisper_timing(
     Returns aligned segments, or None if alignment quality is too low.
     """
     if not online_segments or not whisper_segments:
+        return None
+
+    # Reject a wrong-song LRC: if almost no online line text-matches the Whisper transcript the
+    # title search returned a different song, and showing it would be confidently-wrong text.
+    if _lyrics_text_match_fraction(online_segments, whisper_segments) < _MIN_LYRICS_MATCH_FRACTION:
+        logging.info("Online lyrics text match too low, rejecting as likely wrong song")
         return None
 
     # Estimate and apply global time offset (album vs MV timing)
