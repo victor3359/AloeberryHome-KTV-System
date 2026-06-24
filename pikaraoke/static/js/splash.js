@@ -303,9 +303,16 @@ const handleNowPlayingUpdate = (np) => {
   const video = getVideoPlayer();
 
   // Setup ASS subtitle file if found (skip recreation if URL unchanged)
+  // After a mid-song re-seek (移調/切音軌 -> ffmpeg -ss start_position) the media is re-based
+  // so currentTime=0 == start_position into the song, but the ASS keeps absolute song times.
+  // Octopus renders at video.currentTime + timeOffset, so timeOffset = the seek base re-aligns
+  // subtitles for the rest of the song (0 for fresh plays and the HLS multi-audio instant switch).
+  const subtitleOffset = np.now_playing_subtitle_offset || 0;
   const subtitleUrl = np.now_playing_subtitle_url;
   if (subtitleUrl === window._currentSubtitleUrl && octopusInstance) {
-    // Same subtitle file — don't destroy/recreate (prevents stutter on audio switch)
+    // Same subtitle file — don't destroy/recreate (prevents stutter on audio switch). Still
+    // refresh the offset (read live each timeupdate) in case the seek base changed.
+    octopusInstance.timeOffset = subtitleOffset;
   } else {
     if (octopusInstance) {
       octopusInstance.dispose();
@@ -317,6 +324,7 @@ const handleNowPlayingUpdate = (np) => {
     const options = {
       video: video,
       subUrl: subtitleUrl,
+      timeOffset: subtitleOffset,
       fonts: ["/static/fonts/Arial.ttf", "/static/fonts/DroidSansFallback.ttf"],
       renderMode: "wasm-blend",
       targetFps: 60,

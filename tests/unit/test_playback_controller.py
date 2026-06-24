@@ -98,6 +98,37 @@ class TestPlaybackControllerPlayFile:
         assert pc.is_paused is False
 
     @patch("pikaraoke.lib.playback_controller.time.sleep")
+    def test_play_file_sets_subtitle_offset_from_start_position(self, mock_sleep, test_prefs):
+        """A mid-song re-seek (移調/切音軌) passes start_position to ffmpeg -ss; the same value
+        must surface as now_playing_subtitle_offset so the frontend can shift octopus timing."""
+        events = EventSystem()
+        pc = PlaybackController(test_prefs, events, lambda x, remove_youtube_id=True: "S")
+        pc.stream_manager.play_file = MagicMock(
+            return_value=PlaybackResult(
+                success=True, stream_url="/s.m3u8", subtitle_url="/sub.ass", duration=180
+            )
+        )
+        pc.is_playing = True
+        pc.play_file("/songs/test.mp4", "U", start_position=90.0)
+        assert pc.now_playing_subtitle_offset == 90.0
+        assert pc.get_now_playing()["now_playing_subtitle_offset"] == 90.0
+
+    @patch("pikaraoke.lib.playback_controller.time.sleep")
+    def test_play_file_fresh_play_has_zero_subtitle_offset(self, mock_sleep, test_prefs):
+        """A fresh play (no -ss) must report a 0 subtitle offset, not leak a prior seek base."""
+        events = EventSystem()
+        pc = PlaybackController(test_prefs, events, lambda x, remove_youtube_id=True: "S")
+        pc.stream_manager.play_file = MagicMock(
+            return_value=PlaybackResult(
+                success=True, stream_url="/s.m3u8", subtitle_url="/sub.ass", duration=180
+            )
+        )
+        pc.is_playing = True
+        pc.play_file("/songs/test.mp4", "U")  # default start_position=0
+        assert pc.now_playing_subtitle_offset == 0
+        assert pc.get_now_playing()["now_playing_subtitle_offset"] == 0
+
+    @patch("pikaraoke.lib.playback_controller.time.sleep")
     @patch("flask_babel._", side_effect=lambda x: x)
     def test_play_file_timeout(self, mock_gettext, mock_sleep, test_prefs):
         """Test playback timeout when client never connects."""
