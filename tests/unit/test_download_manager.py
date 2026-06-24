@@ -265,6 +265,65 @@ class TestDownloadManagerExecuteDownload:
         assert any("Error queueing" in msg and cat == "danger" for msg, cat in notifications)
 
 
+class TestDownloadManagerProcessSeam:
+    """The download -> vocal_separator.process() auto-path wire (the main path users hit)."""
+
+    @pytest.fixture
+    def dm_with_vs(self, events, preferences, song_manager, queue_manager):
+        return DownloadManager(
+            events=events,
+            preferences=preferences,
+            song_manager=song_manager,
+            queue_manager=queue_manager,
+            download_path="/songs",
+            youtubedl_proxy=None,
+            additional_ytdl_args=None,
+            vocal_separator=MagicMock(),
+        )
+
+    @patch("flask_babel._", side_effect=lambda x: x)
+    @patch("subprocess.Popen")
+    @patch("pikaraoke.lib.download_manager.build_ytdl_download_command")
+    def test_process_called_once_after_successful_download(
+        self, mock_build_cmd, mock_popen, mock_gettext, dm_with_vs, song_manager
+    ):
+        mock_build_cmd.return_value = ["yt-dlp", "url"]
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Starting download...", ""]
+        mock_process.poll.return_value = 0
+        mock_popen.return_value = mock_process
+        song_manager.songs.find_by_id.return_value = "/songs/Song---abc.mp4"
+        song_manager.songs.add_if_valid.return_value = True
+
+        dm_with_vs._execute_download("https://youtube.com/watch?v=abc", False, "User", "Title")
+
+        dm_with_vs._vocal_separator.process.assert_called_once()
+        args, kwargs = dm_with_vs._vocal_separator.process.call_args
+        assert args[0] == "/songs/Song---abc.mp4"
+        assert "title" in kwargs
+
+    @patch("flask_babel._", side_effect=lambda x: x)
+    @patch("subprocess.Popen")
+    @patch("pikaraoke.lib.download_manager.build_ytdl_download_command")
+    def test_worker_survives_when_process_raises(
+        self, mock_build_cmd, mock_popen, mock_gettext, dm_with_vs, song_manager
+    ):
+        """A failing AI pipeline must not propagate out of the download worker (broad except)."""
+        mock_build_cmd.return_value = ["yt-dlp", "url"]
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Starting download...", ""]
+        mock_process.poll.return_value = 0
+        mock_popen.return_value = mock_process
+        song_manager.songs.find_by_id.return_value = "/songs/Song---abc.mp4"
+        song_manager.songs.add_if_valid.return_value = True
+        dm_with_vs._vocal_separator.process.side_effect = RuntimeError("boom")
+
+        rc = dm_with_vs._execute_download("https://youtube.com/watch?v=abc", False, "User", "Title")
+
+        assert rc == 0  # download succeeded; AI failure swallowed
+        dm_with_vs._vocal_separator.process.assert_called_once()
+
+
 class TestDownloadManagerStatus:
     """Tests for DownloadManager.get_downloads_status method."""
 
