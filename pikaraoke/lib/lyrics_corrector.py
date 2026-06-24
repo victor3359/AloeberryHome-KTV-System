@@ -97,6 +97,73 @@ def _search_online_lyrics(title: str) -> list[dict] | None:
         return None
 
 
+def _interpolate_into(
+    result: list[dict], chars: list[str], span_start: float, span_end: float
+) -> None:
+    """Append ``chars`` spread evenly across [span_start, span_end] onto ``result``.
+
+    Used for online chars with no matching Whisper char (insertions / unequal replacements):
+    they fill the time span between their anchored neighbours.
+    """
+    if not chars:
+        return
+    if span_end <= span_start:
+        # No real gap (e.g. trailing excess chars): continue at the previous tempo.
+        last_end = result[-1]["end"] if result else span_start
+        avg = sum(r["end"] - r["start"] for r in result) / len(result) if result else 0.3
+        for ch in chars:
+            result.append({"word": ch, "start": last_end, "end": last_end + avg})
+            last_end += avg
+        return
+    dur = (span_end - span_start) / len(chars)
+    for k, ch in enumerate(chars):
+        result.append(
+            {"word": ch, "start": span_start + k * dur, "end": span_start + (k + 1) * dur}
+        )
+
+
+def _align_chars_by_opcodes(
+    whisper_chars: list[dict], online_chars: list[str]
+) -> list[dict]:
+    """Align online display chars to Whisper char timings via edit-distance opcodes.
+
+    Anchors matched (or equal-length homophone) chars to their true Whisper timing and only
+    interpolates online chars across unmatched runs. A single Whisper insertion/deletion no
+    longer shifts the whole remainder of the line (the positional-zip drift bug).
+    """
+    whisper_norm = [_normalize_for_comparison(wc["word"]) for wc in whisper_chars]
+    online_norm = [_normalize_for_comparison(ch) for ch in online_chars]
+
+    result: list[dict] = []
+    matcher = SequenceMatcher(None, whisper_norm, online_norm, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "delete":
+            # Whisper-only chars (interjections / hallucinations): no online char to emit.
+            continue
+        if (i2 - i1) == (j2 - j1):
+            # 1:1 correspondence (exact match or equal-length homophone swap): each online
+            # char inherits its true Whisper char timing.
+            for k in range(j2 - j1):
+                wc = whisper_chars[i1 + k]
+                result.append(
+                    {"word": online_chars[j1 + k], "start": wc["start"], "end": wc["end"]}
+                )
+            continue
+        # Unequal replace / pure insert: interpolate online chars across the matched span.
+        if i2 > i1:
+            span_start = whisper_chars[i1]["start"]
+            span_end = whisper_chars[i2 - 1]["end"]
+        else:
+            span_start = whisper_chars[i1 - 1]["end"] if i1 > 0 else whisper_chars[0]["start"]
+            span_end = (
+                whisper_chars[i1]["start"]
+                if i1 < len(whisper_chars)
+                else whisper_chars[-1]["end"]
+            )
+        _interpolate_into(result, online_chars[j1:j2], span_start, span_end)
+    return result
+
+
 def _map_chars_to_whisper_words(
     online_text: str,
     whisper_words: list[dict],
@@ -105,10 +172,9 @@ def _map_chars_to_whisper_words(
 ) -> list[dict]:
     """Map online text characters to Whisper word timestamps.
 
-    Uses Whisper words as timing source, online text as display.
-    Each Whisper word's duration is subdivided across its characters,
-    then online characters inherit these per-character timings.
-    Excess characters use line_end for even distribution (not 0.1s).
+    Uses Whisper words as timing source, online text as display. Each Whisper word's duration
+    is subdivided across its characters, then online chars are aligned to those per-char
+    timings by edit distance (_align_chars_by_opcodes) so insertions/deletions don't drift.
     """
     # Build per-character timing from Whisper words
     whisper_chars: list[dict] = []
@@ -135,21 +201,7 @@ def _map_chars_to_whisper_words(
         end = line_end or (whisper_words[-1]["end"] if whisper_words else 1)
         return _interpolate_word_timing(online_text, start, end, is_cjk)
 
-    result = []
-    for i, ch in enumerate(online_chars):
-        if i < len(whisper_chars):
-            result.append({"word": ch, "start": whisper_chars[i]["start"], "end": whisper_chars[i]["end"]})
-        else:
-            # Excess chars: use average duration of already-mapped chars
-            # (maintains same singing tempo as the first part of the line)
-            if result:
-                avg_dur = sum(r["end"] - r["start"] for r in result) / len(result)
-            else:
-                avg_dur = 0.3
-            last_end = result[-1]["end"] if result else whisper_chars[-1]["end"]
-            result.append({"word": ch, "start": last_end, "end": last_end + avg_dur})
-
-    return result
+    return _align_chars_by_opcodes(whisper_chars, online_chars)
 
 
 def _interpolate_word_timing(
@@ -377,40 +429,40 @@ def _correct_typos_with_online_lyrics(
             result.append(wseg)
             continue
 
-        # Character-level correction: replace individual wrong chars in each word
-        o_idx = 0
+        # Align whisper chars to online chars by edit distance; only EQUAL-LENGTH replace runs
+        # are safe homophone swaps. Insert/delete runs would cascade under a positional walk
+        # (corrupting an otherwise-correct line), so keep Whisper's char there.
+        w_flat = [ch for w in words for ch in w.get("word", "").strip()]
+        corrected_chars = list(w_flat)
+        sm = SequenceMatcher(None, w_flat, list(o_chars), autojunk=False)
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag == "replace" and (i2 - i1) == (j2 - j1):
+                for k in range(i2 - i1):
+                    if corrected_chars[i1 + k] != o_chars[j1 + k]:
+                        corrected_chars[i1 + k] = o_chars[j1 + k]
+                        corrected_count += 1
+
+        # Redistribute corrected chars back into words, preserving per-word timing.
         new_words = []
+        p = 0
         for w in words:
             word_text = w.get("word", "").strip()
             if not word_text:
                 new_words.append(w)
                 continue
+            corrected_word = "".join(corrected_chars[p : p + len(word_text)])
+            p += len(word_text)
+            new_words.append({"word": corrected_word, "start": w["start"], "end": w["end"]})
 
-            corrected_word = ""
-            for ch in word_text:
-                if o_idx < len(o_chars) and ch != o_chars[o_idx]:
-                    # Replace with online character (likely correct)
-                    corrected_word += o_chars[o_idx]
-                    corrected_count += 1
-                elif o_idx < len(o_chars):
-                    corrected_word += ch
-                else:
-                    corrected_word += ch
-                o_idx += 1
-
-            new_words.append(
-                {
-                    "word": corrected_word,
-                    "start": w["start"],
-                    "end": w["end"],
-                }
-            )
-
+        sep = "" if _has_cjk(w_text) else " "
+        corrected_text = sep.join(
+            nw["word"].strip() for nw in new_words if nw["word"].strip()
+        )
         result.append(
             {
                 "start": wseg["start"],
                 "end": wseg["end"],
-                "text": best_match,
+                "text": corrected_text,
                 "words": new_words,
             }
         )

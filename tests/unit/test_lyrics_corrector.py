@@ -3,12 +3,87 @@
 from __future__ import annotations
 
 from pikaraoke.lib.lyrics_corrector import (
+    _correct_typos_with_online_lyrics,
     _estimate_global_offset,
     _has_cjk,
     _interpolate_word_timing,
     _is_credit_line,
+    _map_chars_to_whisper_words,
     align_online_with_whisper_timing,
 )
+
+
+class TestMapCharsToWhisperWords:
+    """The mapping must ANCHOR online chars on their true Whisper counterpart (edit-distance
+    alignment), not zip by index -- a single Whisper insertion/deletion used to slide the whole
+    rest of the line out of sync (the '字幕對不上' root cause)."""
+
+    def test_anchors_past_extra_leading_whisper_char(self):
+        # Whisper heard an extra leading 啊 not present in the online lyric.
+        whisper_words = [
+            {"word": "啊", "start": 9.5, "end": 10.0},
+            {"word": "我", "start": 10.0, "end": 11.0},
+            {"word": "愛", "start": 11.0, "end": 12.0},
+            {"word": "你", "start": 12.0, "end": 12.5},
+        ]
+        result = _map_chars_to_whisper_words("我愛你", whisper_words, is_cjk=True)
+        assert [r["word"] for r in result] == ["我", "愛", "你"]
+        # Each online char inherits its TRUE whisper char timing, not the same-index char.
+        assert abs(result[0]["start"] - 10.0) < 0.01  # 我 -> whisper 我@10.0 (NOT 啊@9.5)
+        assert abs(result[1]["start"] - 11.0) < 0.01  # 愛
+        assert abs(result[2]["start"] - 12.0) < 0.01  # 你
+
+    def test_interpolates_online_only_chars_within_the_gap(self):
+        # Online lyric has 真的 that Whisper dropped -> they must interpolate in the 我..愛 gap,
+        # and 愛/你 must stay anchored on their real timing (no cascade).
+        whisper_words = [
+            {"word": "我", "start": 0.0, "end": 1.0},
+            {"word": "愛", "start": 3.0, "end": 4.0},
+            {"word": "你", "start": 4.0, "end": 5.0},
+        ]
+        result = _map_chars_to_whisper_words("我真的愛你", whisper_words, is_cjk=True)
+        assert [r["word"] for r in result] == ["我", "真", "的", "愛", "你"]
+        assert abs(result[0]["start"] - 0.0) < 0.01  # 我 anchored
+        assert abs(result[3]["start"] - 3.0) < 0.01  # 愛 anchored (NOT pushed to excess)
+        assert abs(result[4]["start"] - 4.0) < 0.01  # 你 anchored
+        assert 1.0 <= result[1]["start"] < 3.0       # 真 in the gap
+        assert 1.0 <= result[2]["start"] < 3.0       # 的 in the gap
+        starts = [r["start"] for r in result]
+        assert starts == sorted(starts)              # monotonic
+
+
+class TestCorrectTyposNoCascade:
+    def test_no_cascade_on_length_mismatch(self):
+        """The fallback typo path must not cascade when online length != whisper length: an
+        extra online char used to shift every subsequent char, corrupting a correct line."""
+        whisper = [{
+            "start": 1.0, "end": 4.0, "text": "我門紅塵做伴",
+            "words": [
+                {"word": "我門", "start": 1.0, "end": 2.0},
+                {"word": "紅塵", "start": 2.0, "end": 3.0},
+                {"word": "做伴", "start": 3.0, "end": 4.0},
+            ],
+        }]
+        # Extra leading 啊 makes online longer than whisper; homophones 門->們, 做->作.
+        online = [{"start": 1.0, "end": 4.0, "text": "啊我們紅塵作伴", "words": []}]
+        result = _correct_typos_with_online_lyrics(whisper, online)
+        text = "".join(w["word"] for seg in result for w in seg["words"])
+        # Homophones corrected; extra 啊 NOT inserted; whisper structure preserved (no cascade).
+        assert text == "我們紅塵作伴"
+
+    def test_equal_length_homophone_still_corrected(self):
+        whisper = [{
+            "start": 1.0, "end": 4.0, "text": "我們紅塵做伴",
+            "words": [
+                {"word": "我們", "start": 1.0, "end": 2.0},
+                {"word": "紅塵", "start": 2.0, "end": 3.0},
+                {"word": "做伴", "start": 3.0, "end": 4.0},
+            ],
+        }]
+        online = [{"start": 1.0, "end": 4.0, "text": "我們紅塵作伴", "words": []}]  # single homophone 做->作
+        result = _correct_typos_with_online_lyrics(whisper, online)
+        text = "".join(w["word"] for seg in result for w in seg["words"])
+        assert text == "我們紅塵作伴"
 
 
 class TestHasCjk:
