@@ -53,6 +53,41 @@ class TestReprocessRoute:
         assert kwargs.get("force") is True
 
     @patch("pikaraoke.routes.scores.get_karaoke_instance")
+    def test_reprocess_forwards_language_override(self, mock_get_instance, client):
+        """An explicit language (e.g. for a non-CJK song Whisper mis-detects) is forwarded."""
+        mock_karaoke = MagicMock()
+        mock_karaoke.song_manager.filename_from_path.return_value = "My Song"
+        mock_get_instance.return_value = mock_karaoke
+
+        def run_target(target=None, daemon=None, **kwargs):
+            thread = MagicMock()
+            thread.start.side_effect = lambda: target()
+            return thread
+
+        with patch("threading.Thread", side_effect=run_target):
+            client.post("/reprocess", json={"song": "/songs/My Song.mp4", "language": "en"})
+
+        _, kwargs = mock_karaoke.vocal_separator.process.call_args
+        assert kwargs.get("language") == "en"
+
+    @patch("pikaraoke.routes.scores.get_karaoke_instance")
+    def test_reprocess_language_defaults_none(self, mock_get_instance, client):
+        mock_karaoke = MagicMock()
+        mock_karaoke.song_manager.filename_from_path.return_value = "My Song"
+        mock_get_instance.return_value = mock_karaoke
+
+        def run_target(target=None, daemon=None, **kwargs):
+            thread = MagicMock()
+            thread.start.side_effect = lambda: target()
+            return thread
+
+        with patch("threading.Thread", side_effect=run_target):
+            client.post("/reprocess", json={"song": "/songs/My Song.mp4"})
+
+        _, kwargs = mock_karaoke.vocal_separator.process.call_args
+        assert kwargs.get("language") is None
+
+    @patch("pikaraoke.routes.scores.get_karaoke_instance")
     def test_reprocess_requires_song(self, mock_get_instance, client):
         mock_get_instance.return_value = MagicMock()
         response = client.post("/reprocess", json={})

@@ -158,6 +158,8 @@ def reprocess_song():
     song_path = (data.get("song") or "").strip()
     if not song_path:
         return jsonify({"ok": False, "error": "Missing song path"}), 400
+    # Optional explicit language override (e.g. "en" for a non-CJK song Whisper mis-detects).
+    language = (data.get("language") or "").strip() or None
 
     import os
     import threading
@@ -179,7 +181,7 @@ def reprocess_song():
         try:
             # force=True so reprocessing always regenerates, even if deleting
             # the old companion files above silently failed.
-            k.vocal_separator.process(song_path, title=title, force=True)
+            k.vocal_separator.process(song_path, title=title, force=True, language=language)
         except Exception as e:  # broad catch: full AI pipeline (subprocess + I/O + model)
             import logging
 

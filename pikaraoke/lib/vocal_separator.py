@@ -366,44 +366,6 @@ class VocalSeparator:
             return "vi"
         return None
 
-    @staticmethod
-    def _detect_language_from_text(text: str) -> str | None:
-        """Detect the dominant language of lyric text.
-
-        Kana/Hangul/Vietnamese diacritics are decisive; otherwise the more frequent of CJK vs
-        Latin wins, so a stray CJK char doesn't flip an English lyric to zh.
-        """
-        import re
-
-        if re.search(r"[\u3040-\u30ff]", text):
-            return "ja"
-        if re.search(r"[\uac00-\ud7af]", text):
-            return "ko"
-        if re.search(r"[\u1ea0-\u1ef9\u01a0\u01a1\u01af\u01b0\u0102\u0103\u0110\u0111]", text):
-            return "vi"
-        cjk = len(re.findall(r"[\u4e00-\u9fff]", text))
-        latin = len(re.findall(r"[A-Za-z]", text))
-        if cjk == 0 and latin == 0:
-            return None
-        return "zh" if cjk >= latin else "en"
-
-    def _choose_language(
-        self, song_path: str, online_segments: list[dict] | None, override: str | None = None
-    ) -> str | None:
-        """Pick the Whisper language: explicit override, else the filename hint, else the online
-        lyrics' language (only when the filename gives no CJK hint, so Chinese songs are never
-        mis-forced by a wrong-language LRC), else None (let Whisper auto-detect)."""
-        if override:
-            return override
-        hint = self._detect_language_from_filename(song_path)
-        if hint:
-            return hint
-        if online_segments:
-            return self._detect_language_from_text(
-                " ".join(s.get("text", "") for s in online_segments)
-            )
-        return None
-
     def transcribe(self, song_path: str, language: str | None = None) -> TranscriptionResult:
         """Run Whisper transcription as a subprocess to avoid GIL contention with Flask."""
         if not WHISPER_AVAILABLE:
@@ -457,7 +419,7 @@ class VocalSeparator:
             )
 
             if detected_lang:
-                logging.info("Language hint from filename: %s", detected_lang)
+                logging.info("Transcription language hint: %s", detected_lang)
 
             env = {
                 **os.environ,
@@ -571,19 +533,18 @@ class VocalSeparator:
             # Step 2: Whisper transcription — 50-90%
             if WHISPER_AVAILABLE:
                 self._events.emit("processing_progress", {"stage": "AI 生成歌詞中", "percent": 55})
-                # Search online lyrics first so their language can drive transcription (the
-                # filename hint wins; lyrics language only fills a non-CJK filename, so Chinese
-                # songs are never mis-forced by a wrong-language LRC). Fixes non-CJK songs that
-                # Whisper would otherwise auto-detect as the wrong language and transcribe to garbage.
-                search_title = title or os.path.basename(song_path)
-                online_segments = _search_online_lyrics(search_title)
-                effective_lang = self._choose_language(song_path, online_segments, language)
-                trans_result = self.transcribe(song_path, language=effective_lang)
+                # language: explicit override (the forcing mechanism) else the filename hint else
+                # Whisper auto-detect. We deliberately do NOT derive it from the online lyrics —
+                # a wrong-song LRC could be in a different language and force the wrong one.
+                trans_result = self.transcribe(song_path, language=language)
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
                     self._events.emit("processing_progress", {"stage": "歌詞校對中", "percent": 85})
                     raw_segments = trans_result.segments
 
+                    # Online lyrics: prefer as primary text, fallback to typo correction
+                    search_title = title or os.path.basename(song_path)
+                    online_segments = _search_online_lyrics(search_title)
                     if online_segments:
                         # Use UNFILTERED Whisper (all timestamps) for alignment
                         aligned = align_online_with_whisper_timing(
