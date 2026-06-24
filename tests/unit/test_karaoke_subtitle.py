@@ -274,3 +274,34 @@ def test_vocal_separator_uses_online_aligned_filter():
     with open(vs, encoding="utf-8") as f:
         src = f.read()
     assert "_filter_whisper_hallucinations(aligned, online_aligned=True)" in src
+
+
+def test_format_ass_time_clamps_negative_to_zero():
+    """Negative seconds must clamp to 0, not emit '-1:59:59.30' which libass cannot parse."""
+    from pikaraoke.lib.karaoke_subtitle import _format_ass_time
+
+    assert _format_ass_time(-0.7) == "0:00:00.00"
+    assert _format_ass_time(-100.0) == "0:00:00.00"
+    # Non-negative times are unaffected
+    assert _format_ass_time(0.0) == "0:00:00.00"
+    assert _format_ass_time(75.34) == "0:01:15.34"
+
+
+def test_no_negative_timestamps_with_default_offset():
+    """The default timing_offset=-0.7 shifts an early vocal onset below zero. Every emitted
+    Start/End must stay >=0 and Start<End, or libass drops the opening lyric line(s)."""
+    segments = [
+        # first word at t=0 -> seg_start would be -0.7 under the default offset
+        {"words": [{"word": c, "start": j * 0.3, "end": j * 0.3 + 0.3}
+                   for j, c in enumerate("早安你好世界")]},
+        {"words": [{"word": c, "start": 2.0 + j * 0.3, "end": 2.0 + j * 0.3 + 0.3}
+                   for j, c in enumerate("第二行歌詞")]},
+    ]
+    ass = generate_karaoke_ass(segments)  # default timing_offset=-0.7
+    times = re.findall(r"^Dialogue:\s*\d+,([^,]+),([^,]+),", ass, re.M)
+    assert times, "expected Dialogue lines"
+    for start, end in times:
+        assert not start.startswith("-"), f"negative Start timestamp: {start}"
+        assert not end.startswith("-"), f"negative End timestamp: {end}"
+        assert _ass_seconds(start) >= 0.0
+        assert _ass_seconds(start) < _ass_seconds(end)

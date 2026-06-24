@@ -107,7 +107,12 @@ def _split_cjk_word(
 
 
 def _format_ass_time(seconds: float) -> str:
-    """Format seconds as ASS timestamp H:MM:SS.cc."""
+    """Format seconds as ASS timestamp H:MM:SS.cc.
+
+    Clamps negatives to 0: a negative time formats as '-1:59:59.30' (modulo wrap),
+    which libass/SubtitlesOctopus cannot parse, silently dropping the line.
+    """
+    seconds = max(0.0, seconds)
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
