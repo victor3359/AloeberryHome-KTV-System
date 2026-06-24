@@ -857,6 +857,53 @@ class TestTranscribeTempCleanup:
             assert not os.path.exists(name), f"temp file leaked: {name}"
 
 
+class TestDetectLanguageFromText:
+    def test_english(self):
+        assert VocalSeparator._detect_language_from_text("are you there my old friend") == "en"
+
+    def test_chinese(self):
+        assert VocalSeparator._detect_language_from_text("聽說你終於放下了我") == "zh"
+
+    def test_japanese_kana_decisive(self):
+        # kanji + kana -> ja (kana is decisive even with Han chars present)
+        assert VocalSeparator._detect_language_from_text("君がいた夏の日") == "ja"
+
+    def test_korean(self):
+        assert VocalSeparator._detect_language_from_text("너를 사랑해") == "ko"
+
+    def test_english_dominant_with_stray_cjk(self):
+        # a single stray CJK char must not flip an English lyric to zh
+        assert VocalSeparator._detect_language_from_text("hello world 愛 goodbye now") == "en"
+
+    def test_empty_or_symbols(self):
+        assert VocalSeparator._detect_language_from_text("") is None
+        assert VocalSeparator._detect_language_from_text("♪♪♪ 123") is None
+
+
+class TestChooseLanguage:
+    def _vs(self):
+        return VocalSeparator(EventSystem(), "/songs")
+
+    def test_explicit_override_wins(self):
+        vs = self._vs()
+        assert vs._choose_language("/songs/中文.mp4", [{"text": "hello"}], override="fr") == "fr"
+
+    def test_filename_hint_beats_lyrics(self):
+        vs = self._vs()
+        # CJK filename -> trust zh, never let an (possibly wrong) English LRC override it
+        assert vs._choose_language("/songs/聽說.mp4", [{"text": "are you there"}]) == "zh"
+
+    def test_lyrics_language_fills_non_cjk_filename(self):
+        vs = self._vs()
+        # ascii filename gives no hint -> use the online lyrics' language (fixes the Amber case)
+        assert vs._choose_language("/songs/Amber - Are You There.mp4",
+                                   [{"text": "are you there"}, {"text": "my old friend"}]) == "en"
+
+    def test_none_when_no_hint_and_no_lyrics(self):
+        vs = self._vs()
+        assert vs._choose_language("/songs/Amber.mp4", []) is None
+
+
 class _SyncThread:
     """Runs the thread target synchronously on start() for deterministic tests."""
 

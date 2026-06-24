@@ -366,7 +366,45 @@ class VocalSeparator:
             return "vi"
         return None
 
-    def transcribe(self, song_path: str) -> TranscriptionResult:
+    @staticmethod
+    def _detect_language_from_text(text: str) -> str | None:
+        """Detect the dominant language of lyric text.
+
+        Kana/Hangul/Vietnamese diacritics are decisive; otherwise the more frequent of CJK vs
+        Latin wins, so a stray CJK char doesn't flip an English lyric to zh.
+        """
+        import re
+
+        if re.search(r"[\u3040-\u30ff]", text):
+            return "ja"
+        if re.search(r"[\uac00-\ud7af]", text):
+            return "ko"
+        if re.search(r"[\u1ea0-\u1ef9\u01a0\u01a1\u01af\u01b0\u0102\u0103\u0110\u0111]", text):
+            return "vi"
+        cjk = len(re.findall(r"[\u4e00-\u9fff]", text))
+        latin = len(re.findall(r"[A-Za-z]", text))
+        if cjk == 0 and latin == 0:
+            return None
+        return "zh" if cjk >= latin else "en"
+
+    def _choose_language(
+        self, song_path: str, online_segments: list[dict] | None, override: str | None = None
+    ) -> str | None:
+        """Pick the Whisper language: explicit override, else the filename hint, else the online
+        lyrics' language (only when the filename gives no CJK hint, so Chinese songs are never
+        mis-forced by a wrong-language LRC), else None (let Whisper auto-detect)."""
+        if override:
+            return override
+        hint = self._detect_language_from_filename(song_path)
+        if hint:
+            return hint
+        if online_segments:
+            return self._detect_language_from_text(
+                " ".join(s.get("text", "") for s in online_segments)
+            )
+        return None
+
+    def transcribe(self, song_path: str, language: str | None = None) -> TranscriptionResult:
         """Run Whisper transcription as a subprocess to avoid GIL contention with Flask."""
         if not WHISPER_AVAILABLE:
             return TranscriptionResult(success=False, error="Whisper is not installed")
@@ -387,7 +425,7 @@ class VocalSeparator:
         output_file = tmp.name
         try:
             logging.info("Starting transcription: %s", audio_source)
-            detected_lang = self._detect_language_from_filename(song_path)
+            detected_lang = language or self._detect_language_from_filename(song_path)
 
             # Run Whisper in a subprocess to avoid GIL contention with Flask/gevent.
             # In-process Whisper with 10 PyTorch threads starved the main thread.
@@ -480,7 +518,9 @@ class VocalSeparator:
                 except OSError:
                     pass
 
-    def process(self, song_path: str, title: str = "", force: bool = False) -> ProcessResult:
+    def process(
+        self, song_path: str, title: str = "", force: bool = False, language: str | None = None
+    ) -> ProcessResult:
         """Full pipeline: separate → transcribe → generate karaoke ASS.
 
         Runs all steps sequentially. Each step is optional — if separation
@@ -489,6 +529,9 @@ class VocalSeparator:
         When ``force`` is False and a valid (non-empty) karaoke ASS already
         exists, the slow Whisper+ASS stage is skipped and the existing file is
         reused, making reprocessing idempotent and resumable.
+
+        ``language`` forces the Whisper transcription language (e.g. "en"); when
+        omitted it is derived from the filename, then the online lyrics.
         """
         with self._lock:
             stem_paths = None
@@ -528,15 +571,19 @@ class VocalSeparator:
             # Step 2: Whisper transcription — 50-90%
             if WHISPER_AVAILABLE:
                 self._events.emit("processing_progress", {"stage": "AI 生成歌詞中", "percent": 55})
-                trans_result = self.transcribe(song_path)
+                # Search online lyrics first so their language can drive transcription (the
+                # filename hint wins; lyrics language only fills a non-CJK filename, so Chinese
+                # songs are never mis-forced by a wrong-language LRC). Fixes non-CJK songs that
+                # Whisper would otherwise auto-detect as the wrong language and transcribe to garbage.
+                search_title = title or os.path.basename(song_path)
+                online_segments = _search_online_lyrics(search_title)
+                effective_lang = self._choose_language(song_path, online_segments, language)
+                trans_result = self.transcribe(song_path, language=effective_lang)
                 if trans_result.success and trans_result.segments:
                     language = trans_result.language
                     self._events.emit("processing_progress", {"stage": "歌詞校對中", "percent": 85})
                     raw_segments = trans_result.segments
 
-                    # Online lyrics: prefer as primary text, fallback to typo correction
-                    search_title = title or os.path.basename(song_path)
-                    online_segments = _search_online_lyrics(search_title)
                     if online_segments:
                         # Use UNFILTERED Whisper (all timestamps) for alignment
                         aligned = align_online_with_whisper_timing(
