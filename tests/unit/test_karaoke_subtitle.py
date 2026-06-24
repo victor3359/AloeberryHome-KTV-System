@@ -276,6 +276,41 @@ def test_vocal_separator_uses_online_aligned_filter():
     assert "_filter_whisper_hallucinations(aligned, online_aligned=True)" in src
 
 
+def test_aligned_path_keeps_5plus_repeat_chorus():
+    """An onomatopoeic chorus repeated 5+ times (啦啦啦啦啦 / la la la la la) matches the
+    \\1{3,} hallucination regex; on the online-aligned path it is a real lyric -> must survive."""
+    zh = [{"text": "啦啦啦啦啦", "start": 0.0, "end": 3.0, "no_speech_prob": 0.0}]
+    assert len(_filter_whisper_hallucinations(zh, online_aligned=True)) == 1
+    en = [{"text": "la la la la la", "start": 0.0, "end": 3.0, "no_speech_prob": 0.0}]
+    assert len(_filter_whisper_hallucinations(en, online_aligned=True)) == 1
+
+
+def test_aligned_path_keeps_line_with_credit_keyword_substring():
+    """An online lyric line containing a credit keyword as a substring (演唱) must survive on
+    the aligned path -- online lyrics are already credit-filtered upstream in _search_online_lyrics."""
+    segs = [{"text": "我演唱著我們的歌", "start": 0.0, "end": 3.0, "no_speech_prob": 0.0}]
+    assert len(_filter_whisper_hallucinations(segs, online_aligned=True)) == 1
+
+
+def test_raw_path_still_drops_5plus_repeat_and_credit_keyword():
+    """Raw Whisper output keeps the aggressive filters: a 5+ repeat phrase and a clear credit
+    line are still dropped when online_aligned is False (the default)."""
+    rep = [{"text": "啦啦啦啦啦", "start": 0.0, "end": 3.0, "no_speech_prob": 0.0}]
+    assert len(_filter_whisper_hallucinations(rep)) == 0
+    credit = [{"text": "作詞 林夕", "start": 0.0, "end": 3.0, "no_speech_prob": 0.0}]
+    assert len(_filter_whisper_hallucinations(credit)) == 0
+
+
+def test_aligned_path_still_drops_junk_punctuation_and_numbers():
+    """Junk lines (punctuation/symbol-only, pure numbers) are never sung lyrics, so they are
+    dropped on BOTH paths, including online-aligned."""
+    junk = [
+        {"text": "♪♪♪", "start": 0.0, "end": 3.0, "no_speech_prob": 0.0},
+        {"text": "123", "start": 4.0, "end": 6.0, "no_speech_prob": 0.0},
+    ]
+    assert len(_filter_whisper_hallucinations(junk, online_aligned=True)) == 0
+
+
 def test_format_ass_time_clamps_negative_to_zero():
     """Negative seconds must clamp to 0, not emit '-1:59:59.30' which libass cannot parse."""
     from pikaraoke.lib.karaoke_subtitle import _format_ass_time

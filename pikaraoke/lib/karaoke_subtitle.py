@@ -62,12 +62,16 @@ _HALLUCINATION_KEYWORDS = [
     "謝謝收看",
 ]
 
-_HALLUCINATION_PATTERNS = [
+# Junk lines that are never sung lyrics -> dropped regardless of source.
+_JUNK_PATTERNS = [
     re.compile(r"^[\s.。，,、…♪♫🎵🎶─\-~]+$"),  # Only punctuation / music symbols
-    re.compile(r"(.{1,4})\1{3,}"),  # Short phrase repeated 4+ times
     re.compile(r"^(the )?(end|fin|終|完)\.?$", re.IGNORECASE),  # End markers
     re.compile(r"^\d+$"),  # Pure numbers
 ]
+
+# Short phrase repeated 4+ times: a Whisper hallucination signature, but it ALSO matches
+# legitimate onomatopoeic choruses (啦啦啦啦啦 / la la la la la) -> only apply to raw Whisper.
+_REPEAT_PATTERN = re.compile(r"(.{1,4})\1{3,}")
 
 
 def _is_cjk_char(ch: str) -> bool:
@@ -170,18 +174,22 @@ def _filter_whisper_hallucinations(segments: list[dict], online_aligned: bool = 
         if len(text_chars) <= 1 and duration < 1.0:
             continue
 
-        # Keyword-based hallucination detection (case-insensitive substring match)
-        text_lower = text.lower()
-        if any(kw in text_lower for kw in _HALLUCINATION_KEYWORDS):
+        # Junk lines (punctuation/symbol-only, end markers, pure numbers) are never sung
+        # lyrics, so drop them regardless of source.
+        if any(pat.search(text) for pat in _JUNK_PATTERNS):
             continue
 
-        # Regex pattern-based hallucination detection
-        if any(pat.search(text) for pat in _HALLUCINATION_PATTERNS):
-            continue
-
-        # Repeat-based dedup catches Whisper hallucinations that loop the same phrase,
-        # but online lyrics legitimately repeat choruses/hooks -> skip for aligned text.
+        # The credit-keyword list, the repeat-phrase regex, and the repeat-based dedup all
+        # also match legitimate human lyrics (a line containing 演唱; an onomatopoeic chorus
+        # 啦啦啦啦啦; a chorus that repeats) -> only apply them to raw Whisper output. Online
+        # lyrics were already credit-filtered upstream in _search_online_lyrics.
         if not online_aligned:
+            text_lower = text.lower()
+            if any(kw in text_lower for kw in _HALLUCINATION_KEYWORDS):
+                continue
+            if _REPEAT_PATTERN.search(text):
+                continue
+
             normalized = re.sub(r"\s+", "", text)
             seen_texts[normalized] = seen_texts.get(normalized, 0) + 1
             if seen_texts[normalized] > 3:
