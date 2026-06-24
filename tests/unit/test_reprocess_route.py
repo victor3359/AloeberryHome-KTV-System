@@ -1,0 +1,59 @@
+"""Tests for the /reprocess route — ensures reprocessing always regenerates.
+
+The route deletes companion files then re-runs the AI pipeline. It must call
+VocalSeparator.process(force=True) so a stale ASS never short-circuits the
+regeneration (see vocal_separator resumable-transcription fix).
+"""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+import werkzeug
+from flask import Flask
+
+# Monkeypatch werkzeug.__version__ for Flask compatibility if missing
+if not hasattr(werkzeug, "__version__"):
+    werkzeug.__version__ = "3.0.0"
+
+from pikaraoke.routes.scores import scores_bp
+
+
+@pytest.fixture
+def app():
+    test_app = Flask(__name__)
+    test_app.register_blueprint(scores_bp)
+    return test_app
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+
+class TestReprocessRoute:
+    @patch("pikaraoke.routes.scores.get_karaoke_instance")
+    def test_reprocess_calls_process_with_force(self, mock_get_instance, client):
+        """The background reprocess must pass force=True so it regenerates."""
+        mock_karaoke = MagicMock()
+        mock_karaoke.song_manager.filename_from_path.return_value = "My Song"
+        mock_get_instance.return_value = mock_karaoke
+
+        # Run the spawned thread's target synchronously for a deterministic assert.
+        def run_target(target=None, daemon=None, **kwargs):
+            thread = MagicMock()
+            thread.start.side_effect = lambda: target()
+            return thread
+
+        with patch("threading.Thread", side_effect=run_target):
+            response = client.post("/reprocess", json={"song": "/songs/My Song.mp4"})
+
+        assert response.status_code == 200
+        mock_karaoke.vocal_separator.process.assert_called_once()
+        _, kwargs = mock_karaoke.vocal_separator.process.call_args
+        assert kwargs.get("force") is True
+
+    @patch("pikaraoke.routes.scores.get_karaoke_instance")
+    def test_reprocess_requires_song(self, mock_get_instance, client):
+        mock_get_instance.return_value = MagicMock()
+        response = client.post("/reprocess", json={})
+        assert response.status_code == 400

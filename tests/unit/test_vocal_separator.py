@@ -134,15 +134,18 @@ class TestHasStems:
         song = str(tmp_path / "Song---abc12345678.mp4")
         vocals = str(tmp_path / "Song---abc12345678_vocals.mp3")
         instrumental = str(tmp_path / "Song---abc12345678_instrumental.mp3")
-        open(vocals, "w").close()
-        open(instrumental, "w").close()
+        with open(vocals, "w") as f:
+            f.write("v")
+        with open(instrumental, "w") as f:
+            f.write("i")
 
         assert separator.has_stems(song) is True
 
     def test_false_when_vocals_missing(self, separator, tmp_path):
         song = str(tmp_path / "Song---abc12345678.mp4")
         instrumental = str(tmp_path / "Song---abc12345678_instrumental.mp3")
-        open(instrumental, "w").close()
+        with open(instrumental, "w") as f:
+            f.write("i")
 
         assert separator.has_stems(song) is False
 
@@ -168,8 +171,10 @@ class TestGetStemPaths:
         song = str(tmp_path / "Track.mp4")
         vocals = str(tmp_path / "Track_vocals.mp3")
         instrumental = str(tmp_path / "Track_instrumental.mp3")
-        open(vocals, "w").close()
-        open(instrumental, "w").close()
+        with open(vocals, "w") as f:
+            f.write("v")
+        with open(instrumental, "w") as f:
+            f.write("i")
 
         result = separator.get_stem_paths(song)
         assert result is not None
@@ -367,8 +372,10 @@ class TestSeparate:
         song = str(tmp_path / "Song.mp4")
         vocals = str(tmp_path / "Song_vocals.mp3")
         instrumental = str(tmp_path / "Song_instrumental.mp3")
-        open(vocals, "w").close()
-        open(instrumental, "w").close()
+        with open(vocals, "w") as f:
+            f.write("v")
+        with open(instrumental, "w") as f:
+            f.write("i")
 
         result = separator.separate(song)
         assert result.success is True
@@ -413,8 +420,10 @@ class TestProcess:
         song = str(tmp_path / "Song.mp4")
         vocals = str(tmp_path / "Song_vocals.mp3")
         instrumental = str(tmp_path / "Song_instrumental.mp3")
-        open(vocals, "w").close()
-        open(instrumental, "w").close()
+        with open(vocals, "w") as f:
+            f.write("v")
+        with open(instrumental, "w") as f:
+            f.write("i")
 
         result = separator.process(song, title="Song")
         assert result.success is True
@@ -509,3 +518,340 @@ class TestDataclasses:
         assert r.ass_path is None
         assert r.language == ""
         assert r.error is None
+
+    def test_process_result_used_stems_default(self):
+        """ProcessResult exposes whether real separated stems were used."""
+        r = ProcessResult(success=True)
+        assert r.used_stems is False
+
+
+# ---------------------------------------------------------------------------
+# Robustness fixes
+# ---------------------------------------------------------------------------
+
+
+class TestHasStemsZeroByte:
+    """Fix 2: a 0-byte stem (crashed run) must not count as present."""
+
+    def test_false_when_vocals_empty(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        open(str(tmp_path / "Song_vocals.mp3"), "w").close()  # 0 bytes
+        with open(str(tmp_path / "Song_instrumental.mp3"), "w") as f:
+            f.write("data")
+        assert separator.has_stems(song) is False
+
+    def test_false_when_instrumental_empty(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        with open(str(tmp_path / "Song_vocals.mp3"), "w") as f:
+            f.write("data")
+        open(str(tmp_path / "Song_instrumental.mp3"), "w").close()  # 0 bytes
+        assert separator.has_stems(song) is False
+
+    def test_true_when_both_non_empty(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        for suffix in ("_vocals.mp3", "_instrumental.mp3"):
+            with open(str(tmp_path / f"Song{suffix}"), "w") as f:
+                f.write("data")
+        assert separator.has_stems(song) is True
+
+    def test_get_stem_paths_none_when_empty(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        open(str(tmp_path / "Song_vocals.mp3"), "w").close()  # 0 bytes
+        with open(str(tmp_path / "Song_instrumental.mp3"), "w") as f:
+            f.write("data")
+        assert separator.get_stem_paths(song) is None
+
+
+class TestSeparateAtomicRename:
+    """Fix 1: stale stem target must not break separation (os.replace overwrite)."""
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", True)
+    def test_overwrites_stale_targets(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        # Stale (truncated/empty) targets from a crashed run.
+        open(str(tmp_path / "Song_vocals.mp3"), "w").close()
+        open(str(tmp_path / "Song_instrumental.mp3"), "w").close()
+
+        # Demucs "output" dir with fresh stems.
+        demucs_dir = tmp_path / "htdemucs" / "Song"
+        demucs_dir.mkdir(parents=True)
+        (demucs_dir / "vocals.mp3").write_text("fresh-vocals")
+        (demucs_dir / "no_vocals.mp3").write_text("fresh-instrumental")
+
+        completed = MagicMock(returncode=0, stderr="", stdout="")
+        with patch(
+            "pikaraoke.lib.vocal_separator.subprocess.run", return_value=completed
+        ):
+            result = separator.separate(song)
+
+        assert result.success is True, result.error
+        assert os.path.exists(result.stem_paths.vocals)
+        # The fresh content replaced the stale 0-byte file.
+        with open(result.stem_paths.vocals) as f:
+            assert f.read() == "fresh-vocals"
+
+
+class TestProcessDegradedSeparation:
+    """Fix 3: a degraded run (no real stems) must be observable."""
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", True)
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_records_degraded_when_separation_fails(self, separator, tmp_path, events):
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+
+        notes: list = []
+        events.on("notification", lambda *a, **k: notes.append(a))
+
+        fake_segments = [
+            {
+                "start": 0,
+                "end": 3,
+                "text": "Hello",
+                "words": [{"word": "Hello", "start": 0, "end": 3}],
+                "no_speech_prob": 0.0,
+            }
+        ]
+        with patch.object(
+            separator,
+            "separate",
+            return_value=SeparationResult(success=False, error="boom"),
+        ):
+            with patch.object(
+                separator,
+                "transcribe",
+                return_value=TranscriptionResult(
+                    success=True, segments=fake_segments, language="en"
+                ),
+            ):
+                with patch(
+                    "pikaraoke.lib.vocal_separator._search_online_lyrics",
+                    return_value=None,
+                ):
+                    with patch(
+                        "pikaraoke.lib.pitch_extractor.extract_pitch",
+                        side_effect=ImportError("nope"),
+                    ):
+                        result = separator.process(song, title="Song")
+
+        assert result.success is True
+        assert result.ass_path is not None
+        # The degraded state is observable on the result...
+        assert result.used_stems is False
+        # ...and via a user-facing notification.
+        assert any(notes), "expected a degraded-quality notification"
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", True)
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_used_stems_true_when_separation_succeeds(
+        self, separator, tmp_path, events
+    ):
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+        vocals = str(tmp_path / "Song_vocals.mp3")
+        with open(vocals, "w") as f:
+            f.write("v")
+
+        fake_segments = [
+            {
+                "start": 0,
+                "end": 3,
+                "text": "Hello",
+                "words": [{"word": "Hello", "start": 0, "end": 3}],
+                "no_speech_prob": 0.0,
+            }
+        ]
+        stems = StemPaths(vocals=vocals, instrumental=str(tmp_path / "Song_instrumental.mp3"))
+        with patch.object(
+            separator,
+            "separate",
+            return_value=SeparationResult(success=True, stem_paths=stems),
+        ):
+            with patch.object(
+                separator,
+                "transcribe",
+                return_value=TranscriptionResult(
+                    success=True, segments=fake_segments, language="en"
+                ),
+            ):
+                with patch(
+                    "pikaraoke.lib.vocal_separator._search_online_lyrics",
+                    return_value=None,
+                ):
+                    with patch(
+                        "pikaraoke.lib.pitch_extractor.extract_pitch",
+                        return_value=None,
+                    ):
+                        result = separator.process(song, title="Song")
+
+        assert result.used_stems is True
+
+
+class TestProcessAtomicAssWrite:
+    """Fix 4: ASS write must be atomic (temp file in same dir + os.replace)."""
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", False)
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_no_temp_leftovers_on_success(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+        fake_segments = [
+            {
+                "start": 0,
+                "end": 3,
+                "text": "Hello",
+                "words": [{"word": "Hello", "start": 0, "end": 3}],
+                "no_speech_prob": 0.0,
+            }
+        ]
+        with patch.object(
+            separator,
+            "transcribe",
+            return_value=TranscriptionResult(
+                success=True, segments=fake_segments, language="en"
+            ),
+        ):
+            with patch(
+                "pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None
+            ):
+                with patch(
+                    "pikaraoke.lib.pitch_extractor.extract_pitch",
+                    side_effect=ImportError("nope"),
+                ):
+                    result = separator.process(song, title="Song")
+
+        assert os.path.exists(result.ass_path)
+        # Only the final ASS exists; no stray temp file in the directory.
+        leftovers = [
+            p
+            for p in os.listdir(tmp_path)
+            if p.endswith(".ass") and p != os.path.basename(result.ass_path)
+        ]
+        assert leftovers == []
+        assert os.path.getsize(result.ass_path) > 0
+
+
+class TestProcessResumable:
+    """Fix 5: a valid existing ASS is reused unless force=True."""
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", False)
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_skips_transcription_when_ass_exists(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+        ass_path = _ass_path_for(song)
+        with open(ass_path, "w", encoding="utf-8") as f:
+            f.write("[Events]\nDialogue: existing")
+
+        with patch.object(separator, "transcribe") as mock_transcribe:
+            result = separator.process(song, title="Song")
+
+        mock_transcribe.assert_not_called()
+        assert result.success is True
+        assert result.ass_path == ass_path
+        # Existing content is preserved.
+        with open(ass_path, encoding="utf-8") as f:
+            assert "existing" in f.read()
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", False)
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_force_reruns_even_when_ass_exists(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+        ass_path = _ass_path_for(song)
+        with open(ass_path, "w", encoding="utf-8") as f:
+            f.write("[Events]\nDialogue: stale")
+
+        fake_segments = [
+            {
+                "start": 0,
+                "end": 3,
+                "text": "Hello",
+                "words": [{"word": "Hello", "start": 0, "end": 3}],
+                "no_speech_prob": 0.0,
+            }
+        ]
+        with patch.object(
+            separator,
+            "transcribe",
+            return_value=TranscriptionResult(
+                success=True, segments=fake_segments, language="en"
+            ),
+        ) as mock_transcribe:
+            with patch(
+                "pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None
+            ):
+                with patch(
+                    "pikaraoke.lib.pitch_extractor.extract_pitch",
+                    side_effect=ImportError("nope"),
+                ):
+                    result = separator.process(song, title="Song", force=True)
+
+        mock_transcribe.assert_called_once()
+        assert result.success is True
+        with open(ass_path, encoding="utf-8") as f:
+            assert "stale" not in f.read()
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", False)
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_empty_ass_does_not_short_circuit(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+        open(_ass_path_for(song), "w").close()  # 0-byte stale ASS
+
+        fake_segments = [
+            {
+                "start": 0,
+                "end": 3,
+                "text": "Hello",
+                "words": [{"word": "Hello", "start": 0, "end": 3}],
+                "no_speech_prob": 0.0,
+            }
+        ]
+        with patch.object(
+            separator,
+            "transcribe",
+            return_value=TranscriptionResult(
+                success=True, segments=fake_segments, language="en"
+            ),
+        ) as mock_transcribe:
+            with patch(
+                "pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None
+            ):
+                with patch(
+                    "pikaraoke.lib.pitch_extractor.extract_pitch",
+                    side_effect=ImportError("nope"),
+                ):
+                    separator.process(song, title="Song")
+
+        mock_transcribe.assert_called_once()
+
+
+class TestTranscribeTempCleanup:
+    """Fix 6: the temp JSON must be unlinked even on subprocess failure."""
+
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_temp_json_removed_on_failure(self, separator, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+
+        created: list[str] = []
+        real_named = __import__("tempfile").NamedTemporaryFile
+
+        def tracking_named(*args, **kwargs):
+            f = real_named(*args, **kwargs)
+            created.append(f.name)
+            return f
+
+        failed = MagicMock(returncode=1, stderr="whisper exploded", stdout="")
+        with patch(
+            "pikaraoke.lib.vocal_separator.subprocess.run", return_value=failed
+        ):
+            with patch("tempfile.NamedTemporaryFile", side_effect=tracking_named):
+                with patch("tempfile.mktemp", side_effect=AssertionError("mktemp used")):
+                    result = separator.transcribe(song)
+
+        assert result.success is False
+        assert created, "expected a NamedTemporaryFile to be created"
+        for name in created:
+            assert not os.path.exists(name), f"temp file leaked: {name}"

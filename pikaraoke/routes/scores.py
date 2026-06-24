@@ -177,7 +177,9 @@ def reprocess_song():
 
     def _reprocess():
         try:
-            k.vocal_separator.process(song_path, title=title)
+            # force=True so reprocessing always regenerates, even if deleting
+            # the old companion files above silently failed.
+            k.vocal_separator.process(song_path, title=title, force=True)
         except Exception as e:  # broad catch: full AI pipeline (subprocess + I/O + model)
             import logging
 

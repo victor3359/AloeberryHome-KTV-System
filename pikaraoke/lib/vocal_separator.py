@@ -93,6 +93,9 @@ class ProcessResult:
     ass_path: str | None = None
     language: str = ""
     error: str | None = None
+    # False means transcription fell back to the original full mix (no real
+    # vocal stems), so the resulting subtitles may be lower quality.
+    used_stems: bool = False
 
 
 def _stem_paths_for(song_path: str) -> tuple[str, str]:
@@ -105,6 +108,39 @@ def _ass_path_for(song_path: str) -> str:
     """Compute expected karaoke ASS path for a song."""
     base = os.path.splitext(song_path)[0]
     return base + "_karaoke.ass"
+
+
+def _is_nonempty_file(path: str) -> bool:
+    """True only if path is a file with content.
+
+    A 0-byte companion is the signature of a crashed run; treating it as
+    "present" would silently short-circuit separation/transcription and
+    produce garbage subtitles, so it must be rejected.
+    """
+    try:
+        return os.path.getsize(path) > 0
+    except OSError:
+        return False
+
+
+def _atomic_write_text(path: str, content: str) -> None:
+    """Write text via a temp file in the same dir then os.replace.
+
+    A crash mid-write must never leave a truncated companion that is then
+    served forever; os.replace makes the swap atomic on the destination.
+    """
+    import tempfile
+
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=directory, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+    except OSError:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
 
 
 class VocalSeparator:
@@ -136,18 +172,18 @@ class VocalSeparator:
         return WHISPER_AVAILABLE
 
     def has_stems(self, song_path: str) -> bool:
-        """Check if separated stems exist for a song."""
+        """Check if valid (non-empty) separated stems exist for a song."""
         vocals_path, instrumental_path = _stem_paths_for(song_path)
-        return os.path.exists(vocals_path) and os.path.exists(instrumental_path)
+        return _is_nonempty_file(vocals_path) and _is_nonempty_file(instrumental_path)
 
     def has_karaoke_ass(self, song_path: str) -> bool:
         """Check if a karaoke ASS file exists for a song."""
         return os.path.exists(_ass_path_for(song_path))
 
     def get_stem_paths(self, song_path: str) -> StemPaths | None:
-        """Get stem paths if they exist."""
+        """Get stem paths if valid (non-empty) stems exist."""
         vocals_path, instrumental_path = _stem_paths_for(song_path)
-        if os.path.exists(vocals_path) and os.path.exists(instrumental_path):
+        if _is_nonempty_file(vocals_path) and _is_nonempty_file(instrumental_path):
             return StemPaths(vocals=vocals_path, instrumental=instrumental_path)
         return None
 
@@ -240,8 +276,10 @@ class VocalSeparator:
                 v_src = os.path.join(demucs_dir, f"vocals{ext}")
                 n_src = os.path.join(demucs_dir, f"no_vocals{ext}")
                 if os.path.exists(v_src) and os.path.exists(n_src):
-                    os.rename(v_src, vocals_path)
-                    os.rename(n_src, instrumental_path)
+                    # os.replace atomically overwrites a stale target; os.rename
+                    # raises FileExistsError on Windows if one already exists.
+                    os.replace(v_src, vocals_path)
+                    os.replace(n_src, instrumental_path)
                     break
             else:
                 return SeparationResult(success=False, error="Demucs output files not found")
@@ -294,19 +332,26 @@ class VocalSeparator:
         if not WHISPER_AVAILABLE:
             return TranscriptionResult(success=False, error="Whisper is not installed")
 
+        # Transcribe the separated vocals when present; otherwise fall back to
+        # the original mix (degraded mode, recorded by the caller).
         vocals_path, _ = _stem_paths_for(song_path)
-        audio_source = vocals_path if os.path.exists(vocals_path) else song_path
+        audio_source = vocals_path if _is_nonempty_file(vocals_path) else song_path
 
+        import json as _json
+        import tempfile
+
+        # NamedTemporaryFile(delete=False) + try/finally guarantees the temp
+        # JSON is unlinked on every exit path (success, subprocess error, or
+        # JSON-load error); the old mktemp leaked it on failure and was racy.
+        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        tmp.close()
+        output_file = tmp.name
         try:
             logging.info("Starting transcription: %s", audio_source)
             detected_lang = self._detect_language_from_filename(song_path)
 
             # Run Whisper in a subprocess to avoid GIL contention with Flask/gevent.
             # In-process Whisper with 10 PyTorch threads starved the main thread.
-            import json as _json
-            import tempfile
-
-            output_file = tempfile.mktemp(suffix=".json")
             lang_arg = f"'{detected_lang}'" if detected_lang else "None"
             # Use faster-whisper (CTranslate2) if available, fallback to openai-whisper
             script = (
@@ -362,7 +407,6 @@ class VocalSeparator:
 
             with open(output_file, encoding="utf-8") as f:
                 data = _json.load(f)
-            os.remove(output_file)
 
             segments = []
             for seg in data.get("segments", []):
@@ -390,17 +434,28 @@ class VocalSeparator:
         ) as e:
             logging.error("Whisper transcription failed: %s", e)
             return TranscriptionResult(success=False, error=str(e))
+        finally:
+            if os.path.exists(output_file):
+                try:
+                    os.remove(output_file)
+                except OSError:
+                    pass
 
-    def process(self, song_path: str, title: str = "") -> ProcessResult:
+    def process(self, song_path: str, title: str = "", force: bool = False) -> ProcessResult:
         """Full pipeline: separate → transcribe → generate karaoke ASS.
 
         Runs all steps sequentially. Each step is optional — if separation
-        fails, transcription still runs on the original file.
+        fails, transcription still runs on the original file (degraded mode).
+
+        When ``force`` is False and a valid (non-empty) karaoke ASS already
+        exists, the slow Whisper+ASS stage is skipped and the existing file is
+        reused, making reprocessing idempotent and resumable.
         """
         with self._lock:
             stem_paths = None
             ass_path = None
             language = ""
+            used_stems = False
 
             # Step 1: Vocal separation (Demucs) — 0-50%
             if DEMUCS_AVAILABLE:
@@ -408,12 +463,28 @@ class VocalSeparator:
                 sep_result = self.separate(song_path)
                 if sep_result.success:
                     stem_paths = sep_result.stem_paths
+                    used_stems = True
                     self._events.emit("processing_progress", {"stage": "分離完成", "percent": 50})
                 else:
                     logging.warning("Separation failed for %s: %s", song_path, sep_result.error)
                     self._events.emit(
                         "processing_progress", {"stage": "分離失敗，改用原始音訊", "percent": 50}
                     )
+                    # Make the degraded state visible to the operator; subtitles
+                    # transcribed from the full mix are typically lower quality.
+                    self._events.emit("notification", "分離失敗，字幕品質可能較差", "warning")
+
+            # Skip the slow transcription stage if a valid ASS already exists.
+            existing_ass = _ass_path_for(song_path)
+            if not force and _is_nonempty_file(existing_ass):
+                logging.info("Reusing existing karaoke ASS: %s", existing_ass)
+                return ProcessResult(
+                    success=True,
+                    stem_paths=stem_paths,
+                    ass_path=existing_ass,
+                    language=language,
+                    used_stems=used_stems,
+                )
 
             # Step 2: Whisper transcription — 50-90%
             if WHISPER_AVAILABLE:
@@ -448,8 +519,9 @@ class VocalSeparator:
                     self._events.emit("processing_progress", {"stage": "產生字幕", "percent": 95})
                     ass_content = generate_karaoke_ass(segments, title)
                     ass_path = _ass_path_for(song_path)
-                    with open(ass_path, "w", encoding="utf-8") as f:
-                        f.write(ass_content)
+                    # Atomic write: a crash mid-write must not leave a truncated
+                    # ASS that is then served forever.
+                    _atomic_write_text(ass_path, ass_content)
                     logging.info("Karaoke ASS generated: %s", ass_path)
 
                     # Step 3: Extract reference pitch curve for scoring
@@ -477,4 +549,5 @@ class VocalSeparator:
                 stem_paths=stem_paths,
                 ass_path=ass_path,
                 language=language,
+                used_stems=used_stems,
             )
