@@ -33,17 +33,13 @@ def test_every_inline_handler_in_splash_html_is_window_exposed():
 
 
 def test_no_classic_helper_reads_a_bare_splash_global():
-    """The only state crossing from a classic helper into splash is score.js reading the score
-    phrases. It must go through window.scoreReviews (slice 1), never a bare global, because a
-    bare read cannot see splash.js's module-scoped bindings. Guards every classic helper that
-    runs alongside the splash module."""
-    score = _read(_SCORE)
+    """After slice 4 the only classic helper still loaded alongside the splash module is
+    fireworks.js, which touches no splash-owned global. score.js is now an ES module that owns
+    scoreReviews itself, so no classic->module bare-global crossing remains."""
     fireworks = _read(_FIREWORKS)
-    # score.js reads/writes only window.scoreReviews, never bare scoreReviews.
-    assert "window.scoreReviews" in score
-    assert re.search(r"(?<!window\.)\bscoreReviews\b", score) is None
-    # fireworks.js touches no splash-owned global (only browser globals like window.innerWidth).
     assert re.search(r"(?<!window\.)\bscoreReviews\b", fireworks) is None
+    score = _read(_SCORE)
+    assert "window.scoreReviews" not in score  # owned as a module-private binding now
 
 
 def test_pitch_helpers_export_their_classes_and_drop_the_window_leak():

@@ -1,14 +1,27 @@
+// score.js owns the score-phrases object as a module-private binding. An imported binding is
+// read-only for the importer, so ownership lives here; splash writes it via setScoreReviews on the
+// score_phrases_update socket event. Seeded with the former splash.js default.
+let scoreReviews = {
+  low: ["Better luck next time!"],
+  mid: ["Not bad!"],
+  high: ["Great job!"],
+};
+
+export function setScoreReviews(next) {
+  scoreReviews = next;
+}
+
 function getScoreData(scoreValue) {
   function randomPhrase(phrases) {
     return phrases[Math.floor(Math.random() * phrases.length)];
   }
 
   if (scoreValue < 30) {
-    return { applause: "applause-l.mp3", review: randomPhrase(window.scoreReviews.low) };
+    return { applause: "applause-l.mp3", review: randomPhrase(scoreReviews.low) };
   } else if (scoreValue < 60) {
-    return { applause: "applause-m.mp3", review: randomPhrase(window.scoreReviews.mid) };
+    return { applause: "applause-m.mp3", review: randomPhrase(scoreReviews.mid) };
   } else {
-    return { applause: "applause-h.mp3", review: randomPhrase(window.scoreReviews.high) };
+    return { applause: "applause-h.mp3", review: randomPhrase(scoreReviews.high) };
   }
 }
 
@@ -57,10 +70,10 @@ async function rotateScore(scoreTextElement, duration) {
   }
 }
 
-async function startScore(staticPath, preCalculatedScore) {
+export async function startScore(staticPath, preCalculatedScore) {
   try {
     const r = await fetch(PikaraokeConfig.scorePhrasesUrl);
-    window.scoreReviews = await r.json();
+    scoreReviews = await r.json();
   } catch (_e) {
     // Network failure: keep the last successfully fetched phrases
   }

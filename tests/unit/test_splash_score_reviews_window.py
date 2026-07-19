@@ -11,18 +11,12 @@ def _read(path):
         return f.read()
 
 
-def test_score_reviews_is_window_scoped():
-    """splash.js owns the score-phrases object and score.js reads/writes it. It must live on
-    window so it survives splash.js becoming an ES module (module scope would otherwise trap a
-    top-level `let` and break score.js's bare reads)."""
+def test_score_reviews_owned_by_scoring_module_not_window():
+    """After slice 4 score.js owns scoreReviews as a module-private binding (no longer on window);
+    splash writes it through setScoreReviews on the socket event, never window.scoreReviews."""
     splash = _read(_SPLASH)
     score = _read(_SCORE)
-    # splash writes window.scoreReviews at init and on the socket update.
-    assert "window.scoreReviews = {" in splash
-    assert "window.scoreReviews = phrases" in splash
-    # score.js reads/writes window.scoreReviews.
-    assert "window.scoreReviews.low" in score
-    assert "window.scoreReviews = await r.json()" in score
-    # No bare (non-window) scoreReviews reference remains in either file.
-    assert re.search(r"(?<!window\.)\bscoreReviews\b", splash) is None
-    assert re.search(r"(?<!window\.)\bscoreReviews\b", score) is None
+    assert re.search(r"^let scoreReviews\b", score, re.M)
+    assert "window.scoreReviews" not in score
+    assert "window.scoreReviews" not in splash
+    assert "setScoreReviews(phrases)" in splash

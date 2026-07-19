@@ -2,6 +2,7 @@ import { startScreensaver, stopScreensaver } from "/static/screensaver.js";
 import { getBackgroundMusicPlayer, playBGMusic, playBGVideo, shouldBackgroundMediaPlay, updateBackgroundMediaState, setupBackgroundMusicPlayer, initBgMedia } from "/static/js/modules/bg-media.js";
 import { PitchAnalyzer } from "/static/js/pitch-analyzer.js";
 import { PitchMeter } from "/static/js/pitch-meter.js";
+import { startScore, setScoreReviews } from "/static/score.js";
 let socket = io();
 let mouseTimer = null;
 let cursorVisible = false;
@@ -18,11 +19,6 @@ let hlsInstance = null;
 let _pitchShiftInitializing = false;
 let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
-window.scoreReviews = {
-  low: ["Better luck next time!"],
-  mid: ["Not bad!"],
-  high: ["Great job!"],
-};
 let isMaster = false;
 let uiScale = null;
 let clockIntervalId = null;
@@ -867,7 +863,7 @@ const setupSocketEvents = () => {
   socket.on("now_playing", handleNowPlayingUpdate);
   socket.on("preferences_update", applyPreferenceUpdate);
   socket.on("preferences_reset", applyPreferencesReset);
-  socket.on("score_phrases_update", (phrases) => { window.scoreReviews = phrases; });
+  socket.on("score_phrases_update", (phrases) => { setScoreReviews(phrases); });
 
   socket.on("leaderboard", (data) => {
     const medals = ["1st", "2nd", "3rd"];
