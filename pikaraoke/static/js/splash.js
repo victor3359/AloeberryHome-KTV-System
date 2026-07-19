@@ -142,15 +142,10 @@ const endSong = async (reason = null, showScore = false) => {
     window._pitchMeter.hide();
   }
 
-  // Stop pitch shift AudioContext
-  if (window._pitchShiftNode) {
-    window._pitchShiftNode.disconnect();
-    window._pitchShiftNode = null;
-  }
-  if (window._pitchShiftCtx) {
-    window._pitchShiftCtx.close().catch(() => {});
-    window._pitchShiftCtx = null;
-  }
+  // Reset pitch to native for the next song. The pitch-shift graph persists for the whole
+  // session (see resetPitchShift): #video can be captured only once, so closing the context
+  // would leave it routed into a dead graph and mute every later song.
+  resetPitchShift();
 
   if (showScore && !PikaraokeConfig.disableScore) {
     const singer = nowPlaying.now_playing_user;
@@ -356,15 +351,8 @@ const handleNowPlayingUpdate = (np) => {
   }
 
   if (np.now_playing_url && np.now_playing_url !== currentVideoUrl) {
-    // Cleanup old AudioContext before changing song to prevent memory leaks
-    if (window._pitchShiftNode) {
-      window._pitchShiftNode.disconnect();
-      window._pitchShiftNode = null;
-    }
-    if (window._pitchShiftCtx) {
-      window._pitchShiftCtx.close().catch(() => {});
-      window._pitchShiftCtx = null;
-    }
+    // Reset pitch to native for the new song; keep the persistent graph (see resetPitchShift).
+    resetPitchShift();
 
     $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
     $("#progress-bar-fill").css({"width": "0%", "transition": "none"});
@@ -696,6 +684,69 @@ async function _initMicScoring(songFilePath) {
   }
 }
 
+// Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change).
+//
+// The graph is built ONCE and kept for the entire session. An HTMLMediaElement can be
+// captured by only one MediaElementSourceNode, and after that capture its audio is
+// permanently routed through the graph — closing the context (the old per-song cleanup)
+// left #video feeding a dead graph, muting every song after the first use of 升降Key.
+// At 0 semitones we bypass the worklet (source -> destination) so unshifted playback keeps
+// native latency; the worklet is spliced in only while actually shifting.
+async function _ensurePitchShiftGraph() {
+  if (window._pitchShiftCtx) return true;
+  if (_pitchShiftInitializing) return false;
+  _pitchShiftInitializing = true;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await ctx.audioWorklet.addModule("/static/js/soundtouch-worklet.js");
+    const source = ctx.createMediaElementSource(getVideoPlayer());
+    const node = new AudioWorkletNode(ctx, "soundtouch-processor");
+    source.connect(ctx.destination); // start bypassed: 0 semitones == native passthrough
+    window._pitchShiftCtx = ctx;
+    window._pitchShiftSource = source;
+    window._pitchShiftNode = node;
+    window._pitchShiftBypassed = true;
+    console.log("SoundTouch AudioWorklet initialized");
+    return true;
+  } catch (e) {
+    console.warn("SoundTouch AudioWorklet failed:", e);
+    flashNotification("此瀏覽器不支援即時升降 Key", "is-warning");
+    window._pitchShiftCtx = null;
+    return false;
+  } finally {
+    _pitchShiftInitializing = false;
+  }
+}
+
+// Splice the worklet in/out and set the pitch. Never tears down the capture.
+function _routePitchShift(semitones) {
+  const ctx = window._pitchShiftCtx;
+  const source = window._pitchShiftSource;
+  const node = window._pitchShiftNode;
+  if (!ctx || !source || !node) return;
+  if (semitones === 0) {
+    if (!window._pitchShiftBypassed) {
+      source.disconnect();
+      node.disconnect();
+      source.connect(ctx.destination);
+      window._pitchShiftBypassed = true;
+    }
+  } else {
+    if (window._pitchShiftBypassed) {
+      source.disconnect();
+      source.connect(node);
+      node.connect(ctx.destination);
+      window._pitchShiftBypassed = false;
+    }
+    node.parameters.get("pitchSemitones").value = semitones;
+  }
+}
+
+// Reset to native pitch on song change / endSong WITHOUT destroying the persistent graph.
+function resetPitchShift() {
+  _routePitchShift(0);
+}
+
 const setupSocketEvents = () => {
   socket.on('connect', () => {
     console.log('Socket connected');
@@ -798,38 +849,18 @@ const setupSocketEvents = () => {
 
   // Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change)
   socket.on("pitch_shift", async (semitones) => {
-    const video = getVideoPlayer();
-    if (!video) return;
-
-    // Initialize audio context and SoundTouch worklet on first use
-    if (!window._pitchShiftCtx) {
-      if (_pitchShiftInitializing) return;
-      _pitchShiftInitializing = true;
-      try {
-        window._pitchShiftCtx = new (window.AudioContext || window.webkitAudioContext)();
-        await window._pitchShiftCtx.audioWorklet.addModule("/static/js/soundtouch-worklet.js");
-        const source = window._pitchShiftCtx.createMediaElementSource(video);
-        window._pitchShiftNode = new AudioWorkletNode(window._pitchShiftCtx, "soundtouch-processor");
-        source.connect(window._pitchShiftNode);
-        window._pitchShiftNode.connect(window._pitchShiftCtx.destination);
-        console.log("SoundTouch AudioWorklet initialized");
-      } catch (e) {
-        console.warn("SoundTouch AudioWorklet failed:", e);
-        flashNotification("此瀏覽器不支援即時升降 Key", "is-warning");
-        window._pitchShiftCtx = null;
-        _pitchShiftInitializing = false;
-        return;
-      }
-      _pitchShiftInitializing = false;
+    if (!getVideoPlayer()) return;
+    if (semitones !== 0) {
+      // Build the persistent graph on first real shift; a 0 with no graph is a no-op.
+      if (!(await _ensurePitchShiftGraph())) return;
+    } else if (!window._pitchShiftCtx) {
+      return;
     }
-
     // Resume context if suspended (requires user interaction)
     if (window._pitchShiftCtx.state === "suspended") {
       await window._pitchShiftCtx.resume();
     }
-
-    // Set pitch shift via AudioParam (no tempo change)
-    window._pitchShiftNode.parameters.get("pitchSemitones").value = semitones;
+    _routePitchShift(semitones);
     console.log("Pitch shift: " + semitones + " semitones (SoundTouch, no tempo change)");
   });
 
