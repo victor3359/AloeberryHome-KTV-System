@@ -88,6 +88,17 @@ class TestParseLrcLine:
         result = _parse_lrc_line("[00:00.00]")
         assert result == (0.0, "")
 
+    def test_millisecond_fraction(self):
+        # P1-4: a 3-digit fraction is milliseconds, not centiseconds. Dividing by 100
+        # regardless of width shifted every ms-LRC line (e.g. NetEase) by up to ~9.9s.
+        result = _parse_lrc_line("[01:23.456]Hello world")
+        assert result == (83.456, "Hello world")
+
+    def test_decisecond_fraction(self):
+        # A 1-digit fraction is tenths of a second.
+        result = _parse_lrc_line("[01:23.4]Hello world")
+        assert result == (83.4, "Hello world")
+
 
 class TestCleanSearchTitle:
     def test_removes_youtube_id_suffix(self):

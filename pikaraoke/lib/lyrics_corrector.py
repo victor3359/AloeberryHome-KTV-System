@@ -21,8 +21,10 @@ def _parse_lrc_line(line: str) -> tuple[float, str] | None:
     m = re.match(r"\[(\d+):(\d+)\.(\d+)\](.*)", line.strip())
     if not m:
         return None
-    minutes, seconds, centis, text = m.groups()
-    timestamp = int(minutes) * 60 + int(seconds) + int(centis) / 100
+    minutes, seconds, frac, text = m.groups()
+    # The fractional field width sets its unit: 2 digits = centiseconds, 3 = milliseconds,
+    # 1 = deciseconds. Dividing by a fixed 100 shifted every ms-LRC line by up to ~9.9s.
+    timestamp = int(minutes) * 60 + int(seconds) + int(frac) / (10 ** len(frac))
     return timestamp, text.strip()
 
 
@@ -141,9 +143,7 @@ def _interpolate_into(
         result.append({"word": ch, "start": point, "end": point})
 
 
-def _align_chars_by_opcodes(
-    whisper_chars: list[dict], online_chars: list[str]
-) -> list[dict]:
+def _align_chars_by_opcodes(whisper_chars: list[dict], online_chars: list[str]) -> list[dict]:
     """Align online display chars to Whisper char timings via edit-distance opcodes.
 
     Anchors matched (or equal-length homophone) chars to their true Whisper timing and only
@@ -178,9 +178,7 @@ def _align_chars_by_opcodes(
         else:
             span_start = whisper_chars[i1 - 1]["end"] if i1 > 0 else whisper_chars[0]["start"]
             span_end = (
-                whisper_chars[i1]["start"]
-                if i1 < len(whisper_chars)
-                else whisper_chars[-1]["end"]
+                whisper_chars[i1]["start"] if i1 < len(whisper_chars) else whisper_chars[-1]["end"]
             )
             ceiling = whisper_chars[i1]["start"] if i1 < len(whisper_chars) else None
         _interpolate_into(result, online_chars[j1:j2], span_start, span_end, ceiling)
@@ -211,11 +209,13 @@ def _map_chars_to_whisper_words(
         n = len(chars)
         dur = (w_end - w_start) / max(n, 1)
         for j in range(n):
-            whisper_chars.append({
-                "word": chars[j],
-                "start": w_start + j * dur,
-                "end": w_start + (j + 1) * dur,
-            })
+            whisper_chars.append(
+                {
+                    "word": chars[j],
+                    "start": w_start + j * dur,
+                    "end": w_start + (j + 1) * dur,
+                }
+            )
 
     # Map online characters to Whisper character timings
     online_chars = [c for c in online_text if not c.isspace()] if is_cjk else online_text.split()
@@ -251,9 +251,7 @@ def _interpolate_word_timing(
 def _has_cjk(text: str) -> bool:
     """Check if text contains CJK characters."""
     return any(
-        0x4E00 <= ord(c) <= 0x9FFF
-        or 0x3040 <= ord(c) <= 0x30FF
-        or 0xAC00 <= ord(c) <= 0xD7AF
+        0x4E00 <= ord(c) <= 0x9FFF or 0x3040 <= ord(c) <= 0x30FF or 0xAC00 <= ord(c) <= 0xD7AF
         for c in text
     )
 
@@ -274,9 +272,7 @@ def _normalize_for_comparison(text: str) -> str:
         return text
 
 
-def _estimate_global_offset(
-    online_segments: list[dict], whisper_segments: list[dict]
-) -> float:
+def _estimate_global_offset(online_segments: list[dict], whisper_segments: list[dict]) -> float:
     """Estimate global time offset between online LRC and Whisper timestamps.
 
     Online LRC may be from album version while Whisper runs on the MV,
@@ -306,9 +302,7 @@ def _estimate_global_offset(
     return offsets[len(offsets) // 2]
 
 
-def _lyrics_text_match_fraction(
-    online_segments: list[dict], whisper_segments: list[dict]
-) -> float:
+def _lyrics_text_match_fraction(online_segments: list[dict], whisper_segments: list[dict]) -> float:
     """Fraction of online lines with a strong (>0.6) text match to some Whisper line.
 
     A low fraction means the online LRC is almost certainly a DIFFERENT song (cover / live /
@@ -326,9 +320,7 @@ def _lyrics_text_match_fraction(
         if not o_text:
             continue
         considered += 1
-        best = max(
-            (SequenceMatcher(None, o_text, w).ratio() for w in whisper_norm), default=0.0
-        )
+        best = max((SequenceMatcher(None, o_text, w).ratio() for w in whisper_norm), default=0.0)
         if best > 0.6:
             matched += 1
     return matched / considered if considered else 0.0
@@ -406,20 +398,20 @@ def align_online_with_whisper_timing(
         if line_words:
             # Advance cursor past used words
             word_cursor = scan
-            words = _map_chars_to_whisper_words(
-                o_text, line_words, is_cjk=is_cjk, line_end=o_end
-            )
+            words = _map_chars_to_whisper_words(o_text, line_words, is_cjk=is_cjk, line_end=o_end)
             matched_count += 1
         else:
             # No Whisper words in range — use LRC timestamps
             words = _interpolate_word_timing(o_text, o_start, o_end, is_cjk=is_cjk)
 
-        aligned.append({
-            "start": words[0]["start"] if words else o_start,
-            "end": words[-1]["end"] if words else o_end,
-            "text": o_text,
-            "words": words,
-        })
+        aligned.append(
+            {
+                "start": words[0]["start"] if words else o_start,
+                "end": words[-1]["end"] if words else o_end,
+                "text": o_text,
+                "words": words,
+            }
+        )
 
     # Quality gate: reject if too few online lines got Whisper timing
     if len(online_segments) > 0 and matched_count / len(online_segments) < 0.2:
@@ -512,9 +504,7 @@ def _correct_typos_with_online_lyrics(
             new_words.append({"word": corrected_word, "start": w["start"], "end": w["end"]})
 
         sep = "" if _has_cjk(w_text) else " "
-        corrected_text = sep.join(
-            nw["word"].strip() for nw in new_words if nw["word"].strip()
-        )
+        corrected_text = sep.join(nw["word"].strip() for nw in new_words if nw["word"].strip())
         result.append(
             {
                 "start": wseg["start"],
