@@ -688,6 +688,10 @@ async function _initMicScoring(songFilePath) {
       }
 
       window._pitchMeter.update(pitch, refPitch, confidence);
+    }, () => {
+      // Skip the YIN entirely while the video is paused — nothing is being sung.
+      const v = getVideoPlayer();
+      return !!(v && !v.paused);
     });
 
     console.log("Mic scoring initialized");

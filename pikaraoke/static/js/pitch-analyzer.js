@@ -23,9 +23,13 @@ class PitchAnalyzer {
     this.sampleRate = audioContext.sampleRate;
   }
 
-  start(callback) {
+  start(callback, shouldAnalyze) {
     this.callback = callback;
+    // Optional predicate; when it returns false (e.g. video paused) detection is skipped so the
+    // O(window*tau) YIN does not run while nothing is being sung.
+    this.shouldAnalyze = shouldAnalyze || null;
     this.running = true;
+    this._lastDetect = 0;
     this._loop();
   }
 
@@ -45,10 +49,18 @@ class PitchAnalyzer {
 
   _loop() {
     if (!this.running) return;
-    this.analyser.getFloatTimeDomainData(this.buffer);
-    const result = this._detectPitchYIN(this.buffer, this.sampleRate);
-    if (this.callback) {
-      this.callback(result.pitch, result.confidence);
+    // Throttle detection to ~20/s (the reference curve is 20 Hz and the meter CSS transition is
+    // 0.1s, so faster gains nothing) and skip it entirely when inactive. Running the YIN on every
+    // 60fps frame burned ~a full core on the TV main thread alongside HLS decode + libass.
+    const now = performance.now();
+    const active = !this.shouldAnalyze || this.shouldAnalyze();
+    if (active && now - this._lastDetect >= 45) {
+      this._lastDetect = now;
+      this.analyser.getFloatTimeDomainData(this.buffer);
+      const result = this._detectPitchYIN(this.buffer, this.sampleRate);
+      if (this.callback) {
+        this.callback(result.pitch, result.confidence);
+      }
     }
     requestAnimationFrame(() => this._loop());
   }
@@ -60,10 +72,14 @@ class PitchAnalyzer {
   _detectPitchYIN(buffer, sampleRate) {
     const threshold = 0.15;
     const halfLen = Math.floor(buffer.length / 2);
-    const yinBuffer = new Float32Array(halfLen);
+    // Only search taus in the 80-1100 Hz vocal band. A full [1, halfLen) scan (~2048 for fftSize
+    // 4096) is ~3x the work for taus that could never be a scored pitch.
+    const tauMin = Math.max(2, Math.floor(sampleRate / 1100));
+    const tauMax = Math.min(halfLen - 1, Math.ceil(sampleRate / 80));
+    const yinBuffer = new Float32Array(tauMax + 1);
 
-    // Step 1: Difference function
-    for (let tau = 0; tau < halfLen; tau++) {
+    // Step 1: Difference function (up to tauMax only)
+    for (let tau = 0; tau <= tauMax; tau++) {
       let sum = 0;
       for (let i = 0; i < halfLen; i++) {
         const delta = buffer[i] - buffer[i + tau];
@@ -75,16 +91,16 @@ class PitchAnalyzer {
     // Step 2: Cumulative mean normalized difference
     yinBuffer[0] = 1;
     let runningSum = 0;
-    for (let tau = 1; tau < halfLen; tau++) {
+    for (let tau = 1; tau <= tauMax; tau++) {
       runningSum += yinBuffer[tau];
       yinBuffer[tau] *= tau / runningSum;
     }
 
-    // Step 3: Absolute threshold
+    // Step 3: Absolute threshold, within the band
     let tauEstimate = -1;
-    for (let tau = 2; tau < halfLen; tau++) {
+    for (let tau = tauMin; tau <= tauMax; tau++) {
       if (yinBuffer[tau] < threshold) {
-        while (tau + 1 < halfLen && yinBuffer[tau + 1] < yinBuffer[tau]) {
+        while (tau + 1 <= tauMax && yinBuffer[tau + 1] < yinBuffer[tau]) {
           tau++;
         }
         tauEstimate = tau;
@@ -96,20 +112,25 @@ class PitchAnalyzer {
       return { pitch: -1, confidence: 0 };
     }
 
-    // Step 4: Parabolic interpolation for better precision
+    // Step 4: Parabolic interpolation, guarding the degenerate (flat) denominator that made
+    // betterTau — and therefore pitch — NaN.
     let betterTau = tauEstimate;
-    if (tauEstimate > 0 && tauEstimate < halfLen - 1) {
+    if (tauEstimate > tauMin && tauEstimate < tauMax) {
       const s0 = yinBuffer[tauEstimate - 1];
       const s1 = yinBuffer[tauEstimate];
       const s2 = yinBuffer[tauEstimate + 1];
-      betterTau = tauEstimate + (s0 - s2) / (2 * (s0 - 2 * s1 + s2));
+      const denom = 2 * (s0 - 2 * s1 + s2);
+      if (denom !== 0) {
+        betterTau = tauEstimate + (s0 - s2) / denom;
+      }
     }
 
     const pitch = sampleRate / betterTau;
     const confidence = 1 - yinBuffer[tauEstimate];
 
-    // Filter out unreasonable frequencies (human voice: 80-1100 Hz)
-    if (pitch < 80 || pitch > 1100) {
+    // Reject non-finite or out-of-band pitch. Without the isFinite check a NaN passed the
+    // comparison (NaN < 80 and NaN > 1100 are both false) and froze the meter at "NaN%".
+    if (!Number.isFinite(pitch) || pitch < 80 || pitch > 1100) {
       return { pitch: -1, confidence: 0 };
     }
 
