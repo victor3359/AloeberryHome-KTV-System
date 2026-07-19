@@ -5,6 +5,7 @@ VocalSeparator.process(force=True) so a stale ASS never short-circuits the
 regeneration (see vocal_separator resumable-transcription fix).
 """
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -92,3 +93,33 @@ class TestReprocessRoute:
         mock_get_instance.return_value = MagicMock()
         response = client.post("/reprocess", json={})
         assert response.status_code == 400
+
+    @patch("pikaraoke.routes.scores.get_karaoke_instance")
+    def test_reprocess_deletes_pitch_json(self, mock_get_instance, client, tmp_path):
+        """P1-7: reprocess must delete _pitch.json too. extract_pitch skips when the output
+        already exists, so leaving the old pitch curve makes mic scoring grade singers against
+        the stale (often wrong-song / bad-separation) reference forever."""
+        mock_karaoke = MagicMock()
+        mock_karaoke.song_manager.filename_from_path.return_value = "My Song"
+        mock_get_instance.return_value = mock_karaoke
+        song = str(tmp_path / "My Song.mp4")
+        base = str(tmp_path / "My Song")
+        companions = [
+            base + s for s in ("_vocals.mp3", "_instrumental.mp3", "_karaoke.ass", "_pitch.json")
+        ]
+        for c in companions:
+            with open(c, "w") as f:
+                f.write("x")
+
+        # Deletion happens synchronously in the route before the thread; keep process() from running.
+        def run_target(target=None, daemon=None, **kwargs):
+            thread = MagicMock()
+            thread.start.side_effect = lambda: None
+            return thread
+
+        with patch("threading.Thread", side_effect=run_target):
+            response = client.post("/reprocess", json={"song": song})
+
+        assert response.status_code == 200
+        for c in companions:
+            assert not os.path.exists(c), f"reprocess left a stale companion: {c}"

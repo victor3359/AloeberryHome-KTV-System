@@ -165,8 +165,10 @@ def reprocess_song():
     import threading
 
     base = os.path.splitext(song_path)[0]
-    # Delete existing stems and lyrics
-    for suffix in ("_vocals.mp3", "_instrumental.mp3", "_karaoke.ass"):
+    # Delete existing stems, lyrics, and the pitch curve. _pitch.json must be included:
+    # extract_pitch() skips when the output already exists, so a surviving stale curve would
+    # keep mic scoring graded against the old (bad-separation / wrong-song) reference forever.
+    for suffix in ("_vocals.mp3", "_instrumental.mp3", "_karaoke.ass", "_pitch.json"):
         path = base + suffix
         if os.path.exists(path):
             try:
