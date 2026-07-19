@@ -5,6 +5,7 @@ import { PitchMeter } from "/static/js/pitch-meter.js";
 import { startScore, setScoreReviews } from "/static/score.js";
 import { initPitchShift, resetPitchShift, applyPitchShift } from "/static/js/modules/pitch-shift.js";
 import { formatTime, escapeHtml, flashNotification, startClock, stopClock, startSessionTimer } from "/static/js/modules/session-ui.js";
+import { createPreferences } from "/static/js/modules/preferences.js";
 let socket = io();
 let mouseTimer = null;
 let cursorVisible = false;
@@ -495,62 +496,21 @@ const handleUnsupportedBrowser = () => {
   }
 }
 
-const toggleBGMedia = (configKey, playFn, disabled) => {
-  PikaraokeConfig[configKey] = disabled;
-  disabled ? playFn(false) : shouldBackgroundMediaPlay() && playFn(true);
-};
-
-const PREFERENCE_EFFECTS = {
-  disable_bg_video:    (v) => toggleBGMedia("disableBgVideo", playBGVideo, v),
-  disable_bg_music:    (v) => toggleBGMedia("disableBgMusic", playBGMusic, v),
-  disable_score:       (v) => { PikaraokeConfig.disableScore = v; },
-  show_splash_clock:   (v) => {
-    PikaraokeConfig.showSplashClock = v;
-    v ? startClock() : (stopClock(), $("#clock").hide());
-  },
-  hide_overlay:        (v) => {
-    PikaraokeConfig.hideOverlay = v;
-    $("#bottom-container, #top-container").toggle(!v);
-  },
-  hide_url:            (v) => { $("#qr-code, #screensaver-qr").toggle(!v); },
-  bg_music_volume:     (v) => {
-    PikaraokeConfig.bgMusicVolume = v;
-    const player = getBackgroundMusicPlayer();
-    if (isMediaPlaying(player)) $(player).animate({ volume: v }, 1000);
-  },
-  screensaver_timeout: (v) => {
+// Preference effects fan out to bg-media, the session clock, the video, the screensaver timeout,
+// and the theme — assembled here as the modularization's last registry via injected deps.
+const { applyPreferenceUpdate, applyPreferencesReset } = createPreferences({
+  playBGVideo,
+  playBGMusic,
+  shouldBackgroundMediaPlay,
+  getBackgroundMusicPlayer,
+  startClock,
+  stopClock,
+  getVideoPlayer,
+  isMediaPlaying,
+  setScreensaverTimeout: (v) => {
     screensaverTimeoutSeconds = v;
-    PikaraokeConfig.screensaverTimeout = v;
   },
-  volume: (v) => {
-    const video = getVideoPlayer();
-    if (video) video.volume = v;
-  },
-  hide_notifications: (v) => {
-    PikaraokeConfig.hideNotifications = v;
-  },
-  splash_theme: (v) => {
-    document.body.className = document.body.className.replace(/theme-\S+/g, "");
-    if (v && v !== "classic") document.body.classList.add("theme-" + v);
-  },
-};
-
-const parsePreferenceValue = (value) => {
-  if (typeof value !== "string") return value;
-  if (value === "True") return true;
-  if (value === "False") return false;
-  const num = Number(value);
-  return !isNaN(num) && value.trim() !== "" ? num : value;
-};
-
-const applyPreferenceUpdate = (data) => {
-  const effect = PREFERENCE_EFFECTS[data.key];
-  if (effect) effect(parsePreferenceValue(data.value));
-};
-
-const applyPreferencesReset = (defaults) => {
-  Object.entries(defaults).forEach(([key, value]) => applyPreferenceUpdate({ key, value }));
-};
+});
 
 // Microphone-based pitch scoring
 function stopMicScoring() {
