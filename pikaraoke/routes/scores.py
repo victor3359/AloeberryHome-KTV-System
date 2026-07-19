@@ -1,11 +1,29 @@
 """Routes for recording and retrieving per-session karaoke scores and stats."""
 
+import os
+
 from flask import jsonify, request
 from flask_smorest import Blueprint
 
 from pikaraoke.lib.current_app import get_karaoke_instance
 
 scores_bp = Blueprint("scores", __name__)
+
+
+def _is_in_library(download_path: str, song_path: str) -> bool:
+    """True only if song_path resolves inside the song library (download_path).
+
+    /reprocess deletes companion files and force-runs the pipeline on the given path, so an
+    arbitrary absolute path from any LAN client must be rejected to prevent deleting files
+    outside the library.
+    """
+    try:
+        base = os.path.abspath(download_path)
+        target = os.path.abspath(song_path)
+        return os.path.commonpath([base, target]) == base
+    except (ValueError, TypeError):
+        # ValueError: paths on different drives (Windows); TypeError: non-str input.
+        return False
 
 
 @scores_bp.post("/record_score")
@@ -158,10 +176,11 @@ def reprocess_song():
     song_path = (data.get("song") or "").strip()
     if not song_path:
         return jsonify({"ok": False, "error": "Missing song path"}), 400
+    if not _is_in_library(k.download_path, song_path):
+        return jsonify({"ok": False, "error": "Song is not in the library"}), 400
     # Optional explicit language override (e.g. "en" for a non-CJK song Whisper mis-detects).
     language = (data.get("language") or "").strip() or None
 
-    import os
     import threading
 
     base = os.path.splitext(song_path)[0]

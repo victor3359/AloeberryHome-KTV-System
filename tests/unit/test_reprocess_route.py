@@ -37,6 +37,7 @@ class TestReprocessRoute:
         """The background reprocess must pass force=True so it regenerates."""
         mock_karaoke = MagicMock()
         mock_karaoke.song_manager.filename_from_path.return_value = "My Song"
+        mock_karaoke.download_path = "/songs"
         mock_get_instance.return_value = mock_karaoke
 
         # Run the spawned thread's target synchronously for a deterministic assert.
@@ -58,6 +59,7 @@ class TestReprocessRoute:
         """An explicit language (e.g. for a non-CJK song Whisper mis-detects) is forwarded."""
         mock_karaoke = MagicMock()
         mock_karaoke.song_manager.filename_from_path.return_value = "My Song"
+        mock_karaoke.download_path = "/songs"
         mock_get_instance.return_value = mock_karaoke
 
         def run_target(target=None, daemon=None, **kwargs):
@@ -75,6 +77,7 @@ class TestReprocessRoute:
     def test_reprocess_language_defaults_none(self, mock_get_instance, client):
         mock_karaoke = MagicMock()
         mock_karaoke.song_manager.filename_from_path.return_value = "My Song"
+        mock_karaoke.download_path = "/songs"
         mock_get_instance.return_value = mock_karaoke
 
         def run_target(target=None, daemon=None, **kwargs):
@@ -95,12 +98,35 @@ class TestReprocessRoute:
         assert response.status_code == 400
 
     @patch("pikaraoke.routes.scores.get_karaoke_instance")
+    def test_reprocess_rejects_path_outside_library(self, mock_get_instance, client, tmp_path):
+        """P2-2: /reprocess deletes companion files and force-runs the pipeline on the given path.
+        It must reject any path outside the song library, or a LAN guest could POST an arbitrary
+        absolute path and delete its _vocals/_karaoke.ass/etc. anywhere on disk."""
+        library = tmp_path / "library"
+        library.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "victim.mp4").write_text("x")
+        (outside / "victim_karaoke.ass").write_text("keep me")
+        mock_karaoke = MagicMock()
+        mock_karaoke.download_path = str(library)
+        mock_get_instance.return_value = mock_karaoke
+
+        response = client.post("/reprocess", json={"song": str(outside / "victim.mp4")})
+        assert response.status_code == 400
+        mock_karaoke.vocal_separator.process.assert_not_called()
+        assert (
+            outside / "victim_karaoke.ass"
+        ).exists(), "must not delete files outside the library"
+
+    @patch("pikaraoke.routes.scores.get_karaoke_instance")
     def test_reprocess_deletes_pitch_json(self, mock_get_instance, client, tmp_path):
         """P1-7: reprocess must delete _pitch.json too. extract_pitch skips when the output
         already exists, so leaving the old pitch curve makes mic scoring grade singers against
         the stale (often wrong-song / bad-separation) reference forever."""
         mock_karaoke = MagicMock()
         mock_karaoke.song_manager.filename_from_path.return_value = "My Song"
+        mock_karaoke.download_path = str(tmp_path)
         mock_get_instance.return_value = mock_karaoke
         song = str(tmp_path / "My Song.mp4")
         base = str(tmp_path / "My Song")
