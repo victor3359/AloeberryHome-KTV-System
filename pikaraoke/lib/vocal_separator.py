@@ -179,6 +179,10 @@ class VocalSeparator:
         self._whisper_model = whisper_model
         self._lock = threading.Lock()
         self._pending: set[str] = set()
+        # Songs a background attempt could not subtitle (instrumental track, failing Whisper).
+        # Skipped by ensure_subtitles_async so they are not re-run on every play. Session-scoped:
+        # a restart gives one fresh attempt, and a valid ASS from /reprocess is honoured first.
+        self._failed: set[str] = set()
         self._pending_lock = threading.Lock()
         self._warned_unavailable = False
 
@@ -199,7 +203,7 @@ class VocalSeparator:
         if self.has_karaoke_ass(song_path):
             return False
         with self._pending_lock:
-            if song_path in self._pending:
+            if song_path in self._pending or song_path in self._failed:
                 return False
             self._pending.add(song_path)
         self._events.emit("notification", "背景產生字幕中…", "info")
@@ -209,14 +213,22 @@ class VocalSeparator:
         return True
 
     def _subtitle_worker(self, song_path: str) -> None:
-        """Background worker: generate subtitles, always clearing the pending marker."""
+        """Background worker: generate subtitles, always clearing the pending marker.
+
+        Records songs that produced no valid ASS in ``_failed`` so a persistently
+        unsubtitleable song is not re-run on every play.
+        """
+        produced = False
         try:
             self.process(song_path)
+            produced = self.has_karaoke_ass(song_path)
         except Exception as e:  # broad catch: full AI pipeline (subprocess + I/O + model)
             logging.warning("Background subtitle generation failed for %s: %s", song_path, e)
         finally:
             with self._pending_lock:
                 self._pending.discard(song_path)
+                if not produced:
+                    self._failed.add(song_path)
 
     def is_available(self) -> bool:
         """Check if vocal separation dependencies are installed."""

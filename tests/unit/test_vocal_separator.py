@@ -905,6 +905,28 @@ class TestEnsureSubtitlesAsync:
         assert separator.ensure_subtitles_async("/songs/a.mp4") is True
         assert "/songs/a.mp4" not in separator._pending
 
+    def test_failed_song_is_memoized_not_retried_every_play(self, separator, monkeypatch):
+        """P1-8b: a song that can never produce an ASS (instrumental track, persistently failing
+        Whisper) must not re-run the whole pipeline on every play. After one failed attempt it is
+        memoized and skipped."""
+        monkeypatch.setattr("pikaraoke.lib.vocal_separator.threading.Thread", _SyncThread)
+        separator.is_available = lambda: True
+        separator.has_karaoke_ass = lambda p: False  # no valid ASS ever results
+        separator.process = MagicMock()  # runs but produces nothing usable
+        assert separator.ensure_subtitles_async("/songs/inst.mp4") is True
+        # second play: memoized as failed -> no re-attempt, no second pipeline run
+        assert separator.ensure_subtitles_async("/songs/inst.mp4") is False
+        separator.process.assert_called_once()
+
+    def test_failed_after_process_raises_is_memoized(self, separator, monkeypatch):
+        monkeypatch.setattr("pikaraoke.lib.vocal_separator.threading.Thread", _SyncThread)
+        separator.is_available = lambda: True
+        separator.has_karaoke_ass = lambda p: False
+        separator.process = MagicMock(side_effect=RuntimeError("boom"))
+        assert separator.ensure_subtitles_async("/songs/b.mp4") is True
+        assert separator.ensure_subtitles_async("/songs/b.mp4") is False
+        separator.process.assert_called_once()
+
 
 class TestLanguageOverride:
     """P0-3: the /reprocess language override must actually reach Whisper (it was
