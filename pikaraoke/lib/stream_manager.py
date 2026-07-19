@@ -15,8 +15,33 @@ from typing import Any
 
 from pikaraoke.lib.events import EventSystem
 from pikaraoke.lib.ffmpeg import build_ffmpeg_cmd, build_multi_audio_hls_cmd
-from pikaraoke.lib.file_resolver import FileResolver, get_tmp_dir, is_transcoding_required
+from pikaraoke.lib.file_resolver import (
+    FileResolver,
+    get_tmp_dir,
+    is_transcoding_required,
+)
 from pikaraoke.lib.preference_manager import PreferenceManager
+
+
+def _is_nonempty(path: str) -> bool:
+    """True only if path is a file with content; a 0-byte stem is a crashed-run artifact."""
+    try:
+        return os.path.getsize(path) > 0
+    except OSError:
+        return False
+
+
+def _stems_usable_for_multi_audio(instrumental: str | None, vocals: str | None) -> bool:
+    """Both stems must be present AND non-empty. A 0-byte stem 'exists' but feeds ffmpeg an empty
+    input, failing the whole track — while has_stems (which gates the phone UI) uses a non-empty
+    check, so the two must agree or a song is offered as multi-audio yet is permanently unplayable.
+    """
+    return (
+        isinstance(instrumental, str)
+        and isinstance(vocals, str)
+        and _is_nonempty(instrumental)
+        and _is_nonempty(vocals)
+    )
 
 
 @dataclass
@@ -129,10 +154,7 @@ class StreamManager:
         has_multi_audio = (
             is_hls
             and semitones == 0  # Multi-audio incompatible with rubberband (too slow)
-            and isinstance(instrumental, str)
-            and isinstance(vocals, str)
-            and os.path.exists(instrumental)
-            and os.path.exists(vocals)
+            and _stems_usable_for_multi_audio(instrumental, vocals)
         )
 
         # Set stream URL based on format
