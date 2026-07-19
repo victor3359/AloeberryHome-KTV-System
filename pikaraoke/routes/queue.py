@@ -182,6 +182,12 @@ def queue_edit(query):
 
 def _do_enqueue(song: str, user: str, user2: str | None = None) -> str:
     k = get_karaoke_instance()
+    if song not in k.song_manager.songs:
+        # Mid-pipeline downloads are not in the library yet; a stale songpicker page (or a
+        # hand-typed URL) can still name them. Refuse instead of playing a companion-less song.
+        return json.dumps(
+            {"song": song, "success": [False, _("Song is still being processed, please wait")]}
+        )
     rc = k.queue_manager.enqueue(song, user, user2=user2)
     if user:
         k.known_singers.add(user)

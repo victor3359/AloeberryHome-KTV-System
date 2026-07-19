@@ -443,3 +443,82 @@ class TestDownloadManagerSpecialCharacters:
         )
 
         queue_manager.enqueue.assert_called_once_with(file_path, "TestUser", log_action=False)
+
+
+class TestLibraryVisibilityDuringProcessing:
+    """Real-TV finding (2026-07-20): the downloaded file joined the browsable library BEFORE the
+    AI pipeline ran, so during the 2-3 min of Demucs/Whisper the song was pickable and a tap
+    played it subtitle-less. The song must enter the library only after processing settles
+    (success OR failure — a failed pipeline still yields a playable, degraded song)."""
+
+    @pytest.fixture
+    def dm_with_vs(self, events, preferences, song_manager, queue_manager):
+        return DownloadManager(
+            events=events,
+            preferences=preferences,
+            song_manager=song_manager,
+            queue_manager=queue_manager,
+            download_path="/songs",
+            youtubedl_proxy=None,
+            additional_ytdl_args=None,
+            vocal_separator=MagicMock(),
+        )
+
+    def _drive(self, mock_build_cmd, mock_popen, song_manager):
+        mock_build_cmd.return_value = ["yt-dlp", "url"]
+        mock_process = MagicMock()
+        mock_process.stdout.readline.side_effect = ["Starting download...", ""]
+        mock_process.poll.return_value = 0
+        mock_popen.return_value = mock_process
+        song_manager.songs.find_by_id.return_value = "/songs/Song---abc.mp4"
+        song_manager.songs.is_valid_song.return_value = True
+        song_manager.songs.add_if_valid.return_value = True
+
+    @patch("flask_babel._", side_effect=lambda x: x)
+    @patch("subprocess.Popen")
+    @patch("pikaraoke.lib.download_manager.build_ytdl_download_command")
+    def test_song_enters_library_only_after_processing(
+        self, mock_build_cmd, mock_popen, mock_gettext, dm_with_vs, song_manager
+    ):
+        self._drive(mock_build_cmd, mock_popen, song_manager)
+        adds_at_process_time = []
+        dm_with_vs._vocal_separator.process.side_effect = (
+            lambda *a, **k: adds_at_process_time.append(song_manager.songs.add_if_valid.call_count)
+        )
+
+        dm_with_vs._execute_download("https://youtube.com/watch?v=abc", False, "User", "Title")
+
+        # invisible while the pipeline runs...
+        assert adds_at_process_time == [0]
+        # ...and in the library once it settles.
+        song_manager.songs.add_if_valid.assert_called_once_with("/songs/Song---abc.mp4")
+
+    @patch("flask_babel._", side_effect=lambda x: x)
+    @patch("subprocess.Popen")
+    @patch("pikaraoke.lib.download_manager.build_ytdl_download_command")
+    def test_song_still_added_when_processing_fails(
+        self, mock_build_cmd, mock_popen, mock_gettext, dm_with_vs, song_manager
+    ):
+        self._drive(mock_build_cmd, mock_popen, song_manager)
+        dm_with_vs._vocal_separator.process.side_effect = RuntimeError("boom")
+
+        dm_with_vs._execute_download("https://youtube.com/watch?v=abc", False, "User", "Title")
+
+        # A failed pipeline must not lose the song — it appears, playable in degraded mode.
+        song_manager.songs.add_if_valid.assert_called_once_with("/songs/Song---abc.mp4")
+
+
+class TestEnqueueLibraryGuard:
+    """A stale songpicker page (or hand-typed URL) can still POST /enqueue for a mid-pipeline
+    path; the route must refuse songs that are not (yet) in the library."""
+
+    def test_do_enqueue_refuses_unknown_song(self):
+        import os
+
+        route = os.path.join(
+            os.path.dirname(__file__), "..", "..", "pikaraoke", "routes", "queue.py"
+        )
+        with open(route, encoding="utf-8") as f:
+            src = f.read()
+        assert "not in k.song_manager.songs" in src
+        assert "still being processed" in src or "處理" in src

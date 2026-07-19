@@ -317,7 +317,10 @@ class DownloadManager:
 
             song_is_valid = False
             if song_path:
-                song_is_valid = self._song_manager.songs.add_if_valid(song_path)
+                # Validate now but keep the song OUT of the library until the AI pipeline
+                # settles: a browsable mid-pipeline song invites a tap that plays it without
+                # subtitles/stems (real-TV finding 2026-07-20).
+                song_is_valid = self._song_manager.songs.is_valid_song(song_path)
             else:
                 logging.warning(
                     f"Could not find downloaded song in {self._download_path} matching ID: {video_id}"
@@ -330,6 +333,10 @@ class DownloadManager:
                     self._vocal_separator.process(song_path, title=displayed_title)
                 except Exception as e:  # broad catch: full AI pipeline (subprocess + I/O + model)
                     logging.warning("Vocal processing failed for %s: %s", song_path, e)
+
+            # Pipeline settled (success or degraded) — the song may now be seen and picked.
+            if song_is_valid and song_path:
+                song_is_valid = self._song_manager.songs.add_if_valid(song_path)
 
             # Auto-normalize song name: "YouTubeTitle" → "Artist - Song"
             if song_is_valid and song_path:
