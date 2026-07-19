@@ -232,8 +232,12 @@ class VocalSeparator:
         return _is_nonempty_file(vocals_path) and _is_nonempty_file(instrumental_path)
 
     def has_karaoke_ass(self, song_path: str) -> bool:
-        """Check if a karaoke ASS file exists for a song."""
-        return os.path.exists(_ass_path_for(song_path))
+        """Check if a valid (non-empty) karaoke ASS exists for a song.
+
+        Uses _is_nonempty_file, not os.path.exists, so a 0-byte crash artifact does not block
+        the background backfill that would regenerate it — matching process()'s reuse check.
+        """
+        return _is_nonempty_file(_ass_path_for(song_path))
 
     def get_stem_paths(self, song_path: str) -> StemPaths | None:
         """Get stem paths if valid (non-empty) stems exist."""

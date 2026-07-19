@@ -165,14 +165,24 @@ class TestHasStems:
 
 
 class TestHasKaraokeAss:
-    def test_true_when_ass_exists(self, separator, tmp_path):
+    def test_true_when_ass_has_content(self, separator, tmp_path):
         song = str(tmp_path / "Song.mp4")
         ass_file = str(tmp_path / "Song_karaoke.ass")
-        open(ass_file, "w").close()
+        with open(ass_file, "w") as f:
+            f.write("[Script Info]\n")
         assert separator.has_karaoke_ass(song) is True
 
     def test_false_when_missing(self, separator, tmp_path):
         song = str(tmp_path / "Song.mp4")
+        assert separator.has_karaoke_ass(song) is False
+
+    def test_false_when_zero_byte(self, separator, tmp_path):
+        """P1-8: a 0-byte ASS is a crashed-run artifact. Treating it as present made
+        ensure_subtitles_async's os.path.exists gate skip the backfill forever, so the song
+        served an empty subtitle file with no path to repair. Match process()'s own reuse
+        check, which uses _is_nonempty_file."""
+        song = str(tmp_path / "Song.mp4")
+        open(str(tmp_path / "Song_karaoke.ass"), "w").close()  # 0 bytes
         assert separator.has_karaoke_ass(song) is False
 
 
