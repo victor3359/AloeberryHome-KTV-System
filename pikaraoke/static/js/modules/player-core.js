@@ -15,13 +15,18 @@ import {
 } from "/static/js/modules/session-ui.js";
 import { updateSubtitles } from "/static/js/modules/subtitles.js";
 import { setupHls, destroyHls, switchAudioTrack } from "/static/js/modules/audio-pipeline.js";
+import {
+  startMicScoring,
+  stopMicScoring,
+  getMicScore,
+  hideMeter,
+} from "/static/js/modules/mic-scoring.js";
 
 let socket = io();
 let nowPlaying = {};
 let currentVideoUrl = null;
 let isMaster = false;
 let volume = 0.85;
-let isScoreShown = false;
 const playbackStartTimeout = 10000;
 
 let d = {}; // injected splash-local deps + shared-state accessors
@@ -32,10 +37,8 @@ export function getNowPlaying() {
 
 const endSong = async (reason = null, showScore = false) => {
   // Stop mic scoring (PitchAnalyzer.stop releases the mic stream + AudioContext)
-  d.stopMicScoring();
-  if (window._pitchMeter) {
-    window._pitchMeter.hide();
-  }
+  stopMicScoring();
+  hideMeter();
 
   // Reset pitch to native for the next song. The pitch-shift graph persists for the whole session
   // (see resetPitchShift): #video can be captured only once, so closing the context would leave it
@@ -45,20 +48,14 @@ const endSong = async (reason = null, showScore = false) => {
   if (showScore && !PikaraokeConfig.disableScore) {
     const singer = nowPlaying.now_playing_user;
     const song = nowPlaying.now_playing;
-    isScoreShown = true;
 
-    // Use mic-based score if available, otherwise random
-    let scoreValue;
-    if (window._pitchMeter && window._pitchMeter.totalFrames > 10) {
-      scoreValue = window._pitchMeter.getScore();
-      window._pitchMeter.reset();
-    }
+    // Use the mic-based score if the meter gathered enough frames, otherwise random.
+    let scoreValue = getMicScore();
     if (scoreValue === undefined) {
       scoreValue = await startScore("/static/");
     } else {
       await startScore("/static/", scoreValue);
     }
-    isScoreShown = false;
     if (singer && scoreValue !== undefined) {
       $.post("/record_score", { singer, score: scoreValue, song });
     }
@@ -106,7 +103,7 @@ const handleNowPlayingUpdate = (np) => {
   if (np.now_playing) {
     let nowPlayingHtml = `<span>${escapeHtml(np.now_playing)}</span> `;
     if (np.now_playing_transpose !== 0) {
-      nowPlayingHtml += `<span class='is-size-6 has-text-success'><b>Key</b>: ${getSemitonesLabel(np.now_playing_transpose)} </span>`;
+      nowPlayingHtml += `<span class='is-size-6 has-text-success'><b>Key</b>: ${d.getSemitonesLabel(np.now_playing_transpose)} </span>`;
     }
     $("#now-playing-song").html(nowPlayingHtml);
     const singerLabel = np.now_playing_user2
@@ -197,7 +194,7 @@ const handleNowPlayingUpdate = (np) => {
 
     // Initialize mic-based pitch scoring (if not disabled)
     if (!PikaraokeConfig.disableScore) {
-      d.initMicScoring(np.now_playing_filename || "");
+      startMicScoring(np.now_playing_filename || "");
     }
 
     if (np.now_playing_position && d.isMediaPlaying(video)) {
@@ -316,8 +313,8 @@ const setupSocketEvents = () => {
   });
   socket.on("skip", (reason) => {
     // Skip pauses without going through endSong, so release the analyzer here too.
-    d.stopMicScoring();
-    if (window._pitchMeter) window._pitchMeter.hide();
+    stopMicScoring();
+    hideMeter();
     const video = d.getVideoPlayer();
     const currVolume = video.volume;
     if (d.isMediaPlaying(video)) {

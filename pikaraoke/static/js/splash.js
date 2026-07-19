@@ -1,15 +1,15 @@
 import { startScreensaver, stopScreensaver } from "/static/screensaver.js";
 import { getBackgroundMusicPlayer, playBGMusic, playBGVideo, shouldBackgroundMediaPlay, updateBackgroundMediaState, setupBackgroundMusicPlayer, initBgMedia } from "/static/js/modules/bg-media.js";
-import { PitchAnalyzer } from "/static/js/pitch-analyzer.js";
-import { PitchMeter } from "/static/js/pitch-meter.js";
+import { initMicScoring } from "/static/js/modules/mic-scoring.js";
 import { initPitchShift } from "/static/js/modules/pitch-shift.js";
 import { flashNotification, startClock, stopClock } from "/static/js/modules/session-ui.js";
 import { createPreferences } from "/static/js/modules/preferences.js";
 import { initPlayerCore } from "/static/js/modules/player-core.js";
 
 // The player-core controller (sockets + now-playing lifecycle), assigned once initPlayerCore runs
-// below. splash.js is now the composition root: it wires the feature modules and owns only the
-// permissions / screensaver / overlay-menu / mic-scoring / ui-scaling concerns.
+// below. splash.js is now the composition root: it wires the feature modules (bg-media, pitch-shift,
+// mic-scoring, preferences, player-core) and owns only the permissions / screensaver / overlay-menu
+// / ui-scaling concerns plus the shared state their injected accessors expose.
 let player;
 let mouseTimer = null;
 let cursorVisible = false;
@@ -49,6 +49,10 @@ initPitchShift({
   getVideoPlayer: () => getVideoPlayer(),
   flashNotification: (m, c) => flashNotification(m, c),
 });
+
+// Mic scoring owns the analyzer/meter/reference curve; it only needs the #video accessor (lazy —
+// getVideoPlayer is defined below, and startMicScoring runs at now-playing time).
+initMicScoring({ getVideoPlayer: () => getVideoPlayer() });
 
 const testAutoplayCapability = async () => {
   // Test if autoplay with audio is allowed using a real video file
@@ -209,94 +213,6 @@ const { applyPreferenceUpdate, applyPreferencesReset } = createPreferences({
   },
 });
 
-// Microphone-based pitch scoring
-function stopMicScoring() {
-  // Stop + release the current analyzer (PitchAnalyzer.stop stops the mic tracks and closes its
-  // AudioContext). Safe to call when none is active.
-  if (window._pitchAnalyzer) {
-    window._pitchAnalyzer.stop();
-    window._pitchAnalyzer = null;
-  }
-}
-
-async function _initMicScoring(songFilePath) {
-  // Release the previous song's analyzer first — a skip or mid-song url change re-inits without
-  // going through endSong, so without this the old mic stream + AudioContext + rAF loop leak.
-  stopMicScoring();
-  // Clear stale frames from the previous song's meter BEFORE this song scores. window._pitchMeter
-  // is only replaced when init succeeds, so if getUserMedia fails below, the old meter would
-  // otherwise survive and endSong would record the previous singer's score for this singer.
-  if (window._pitchMeter) window._pitchMeter.reset();
-  try {
-    // Request mic permission
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false }
-    });
-
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    window._pitchAnalyzer = new PitchAnalyzer(ctx, stream);
-
-    // Initialize pitch meter UI
-    const container = document.getElementById("pitch-meter-container");
-    if (container) {
-      window._pitchMeter = new PitchMeter(container);
-      window._pitchMeter.reset();
-      window._pitchMeter.show();
-    }
-
-    // Load reference pitch curve
-    window._referencePitch = [];
-    if (songFilePath) {
-      try {
-        const resp = await fetch("/pitch_data/" + encodeURIComponent(songFilePath));
-        if (resp.ok) {
-          window._referencePitch = await resp.json();
-          console.log("Reference pitch loaded:", window._referencePitch.length, "points");
-        }
-      } catch (e) {
-        console.log("No reference pitch available");
-      }
-    }
-
-    // Start real-time analysis
-    window._pitchAnalyzer.start((pitch, confidence) => {
-      if (!window._pitchMeter) return;
-      const video = getVideoPlayer();
-      if (!video || video.paused) return;
-
-      // Find reference pitch at current time
-      const currentTime = video.currentTime;
-      let refPitch = 0;
-      if (window._referencePitch.length > 0) {
-        // Binary search for closest time
-        let lo = 0, hi = window._referencePitch.length - 1;
-        while (lo < hi) {
-          const mid = (lo + hi) >> 1;
-          if (window._referencePitch[mid].time < currentTime) lo = mid + 1;
-          else hi = mid;
-        }
-        if (lo < window._referencePitch.length) {
-          const ref = window._referencePitch[lo];
-          if (Math.abs(ref.time - currentTime) < 0.1 && ref.confidence > 0.3) {
-            refPitch = ref.pitch;
-          }
-        }
-      }
-
-      window._pitchMeter.update(pitch, refPitch, confidence);
-    }, () => {
-      // Skip the YIN entirely while the video is paused — nothing is being sung.
-      const v = getVideoPlayer();
-      return !!(v && !v.paused);
-    });
-
-    console.log("Mic scoring initialized");
-  } catch (e) {
-    console.log("Mic scoring unavailable:", e.message);
-    // Silently fail — random scoring will be used as fallback
-  }
-}
-
 // Initialize the player-core controller: it owns the now-playing lifecycle + all socket wiring and
 // runs setupSocketEvents immediately (outside document ready), matching the original ordering. All
 // its deps are defined above; the video-element / idle-counter / autoplay / ui-scale accessors are
@@ -305,14 +221,14 @@ player = initPlayerCore({
   getVideoPlayer,
   isMediaPlaying,
   hideVideo,
-  stopMicScoring,
-  initMicScoring: _initMicScoring,
   browser: { isChrome, isEdge, isMobileSafari },
   getAutoplayConfirmed: () => autoplayConfirmed,
   resetIdle: () => {
     idleTime = 0;
   },
   getUiScale: () => uiScale,
+  // getSemitonesLabel is a base.html global; inject it so player-core's dependency is explicit.
+  getSemitonesLabel: (v) => getSemitonesLabel(v),
   applyPreferenceUpdate,
   applyPreferencesReset,
 });
