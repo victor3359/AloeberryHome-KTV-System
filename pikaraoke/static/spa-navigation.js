@@ -556,9 +556,13 @@
      */
     function executeScripts(scripts) {
         scripts.forEach(script => {
-            // Only execute inline scripts
-            // External scripts have already been loaded by loadExternalResources
-            if (script.textContent && !script.src) {
+            // Only execute inline CLASSIC scripts. External scripts are already loaded by
+            // loadExternalResources. type=module / type=importmap must run once at initial page
+            // load — re-running them here as classic threw an uncaught SyntaxError on every SPA
+            // navigation ('import statement outside a module' / invalid importmap-as-JS), and an
+            // importmap can't be added after the first load anyway.
+            const type = (script.type || '').toLowerCase();
+            if (script.textContent && !script.src && type !== 'module' && type !== 'importmap') {
                 try {
                     // Create a new script element to ensure execution
                     const newScript = document.createElement('script');
