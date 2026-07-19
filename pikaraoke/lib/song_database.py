@@ -262,7 +262,7 @@ class SongDatabase:
                     "SELECT * FROM songs WHERE language=? AND file_path NOT IN ({}) ORDER BY play_count DESC LIMIT ?".format(
                         ",".join("?" for _ in seen)
                     ),
-                    (*seen, limit - len(results)),
+                    (current["language"], *seen, limit - len(results)),
                 ).fetchall()
                 results.extend([dict(r) for r in rows])
 
