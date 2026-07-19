@@ -64,7 +64,14 @@ class SongManager:
         """Return paths to companion files that exist alongside a song."""
         base = os.path.splitext(song_path)[0]
         companions = []
-        for suffix in (".cdg", ".ass", "_karaoke.ass", "_vocals.mp3", "_instrumental.mp3", "_pitch.json"):
+        for suffix in (
+            ".cdg",
+            ".ass",
+            "_karaoke.ass",
+            "_vocals.mp3",
+            "_instrumental.mp3",
+            "_pitch.json",
+        ):
             path = base + suffix
             if os.path.exists(path):
                 companions.append(path)
@@ -83,12 +90,16 @@ class SongManager:
         if self.song_db:
             self.song_db.remove_song(song_path)
 
-    def rename(self, song_path: str, new_name: str) -> None:
+    def rename(self, song_path: str, new_name: str) -> str:
         """Rename a song file and its associated companion files if present.
 
         Args:
             song_path: Full path to the current song file.
             new_name: New filename (without extension).
+
+        Returns:
+            The actual new file path. new_name is sanitized internally (Windows-illegal chars ->
+            '-'), so callers must use this return value rather than rebuilding the path themselves.
         """
         new_name = sanitize_filename(new_name)
         logging.info(f"Renaming song: '{song_path}' to: {new_name}")
@@ -113,3 +124,4 @@ class SongManager:
         self.songs.rename(song_path, new_path)
         if self.song_db:
             self.song_db.rename_song(song_path, new_path)
+        return new_path

@@ -126,6 +126,21 @@ class TestRename:
         sm.refresh_songs()
         sm.rename(_native(song), "New Name---abc")
         assert not song.exists()
+
+    def test_rename_returns_the_actual_new_path(self, tmp_path):
+        """P2-1: rename sanitizes the new name internally and updates the DB with the sanitized
+        path, so it must RETURN that actual path. The download auto-rename instead rebuilt
+        song_path from the unsanitized name, recording a ghost DB row and enqueuing a nonexistent
+        file whenever the name held a Windows-illegal char."""
+        from pathlib import Path
+
+        song = tmp_path / "Old---abc.mp4"
+        song.write_text("fake")
+        sm = SongManager(str(tmp_path))
+        sm.refresh_songs()
+        new_path = sm.rename(_native(song), "New Name---abc")
+        assert new_path is not None and Path(new_path).exists()
+        assert Path(new_path).name == "New Name---abc.mp4"
         assert (tmp_path / "New Name---abc.mp4").exists()
 
     def test_renames_cdg_companion(self, tmp_path):

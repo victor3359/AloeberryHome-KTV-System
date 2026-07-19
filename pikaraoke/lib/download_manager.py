@@ -350,9 +350,10 @@ class DownloadManager:
                         and " - " in corrected
                         and len(corrected) > 3
                     ):
-                        self._song_manager.rename(song_path, corrected)
-                        ext = os.path.splitext(song_path)[1]
-                        song_path = os.path.join(self._download_path, corrected + ext)
+                        # Use the path rename() actually wrote — it sanitizes the name, so
+                        # rebuilding it from `corrected` here would desync (a ghost DB row +
+                        # an enqueued nonexistent file for names with illegal chars).
+                        song_path = self._song_manager.rename(song_path, corrected)
                         logging.info("Auto-renamed: %s → %s", display_name, corrected)
                 except (ImportError, OSError, TypeError, ValueError) as e:
                     logging.warning("Auto-rename failed: %s", e)
