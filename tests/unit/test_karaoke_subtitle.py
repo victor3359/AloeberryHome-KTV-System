@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import re
 
+import pytest
+
 from pikaraoke.lib.karaoke_subtitle import (
     _build_kf_text,
     _filter_whisper_hallucinations,
@@ -12,6 +14,34 @@ from pikaraoke.lib.karaoke_subtitle import (
     _split_cjk_word,
     generate_karaoke_ass,
 )
+
+
+class TestOpenCCCaching:
+    def test_converter_built_once_not_per_call(self, monkeypatch):
+        """P1-6: OpenCC(...) loads a dictionary from disk; called per char inside the hot
+        subtitle/alignment loops it stalled the gevent event loop (TV freeze while generating).
+        The converter must be cached and reused, not reconstructed on every call."""
+        opencc = pytest.importorskip("opencc")
+        from pikaraoke.lib import karaoke_subtitle as ks
+
+        real_opencc = opencc.OpenCC
+        count = {"n": 0}
+
+        def counting(config):
+            count["n"] += 1
+            return real_opencc(config)
+
+        monkeypatch.setattr(opencc, "OpenCC", counting)
+        if hasattr(ks, "_get_opencc"):
+            ks._get_opencc.cache_clear()
+        try:
+            ks._to_traditional_chinese("头发")
+            ks._to_traditional_chinese("干杯")
+            ks._to_traditional_chinese("面条")
+            assert count["n"] == 1, "OpenCC must be constructed once and cached, not per call"
+        finally:
+            if hasattr(ks, "_get_opencc"):
+                ks._get_opencc.cache_clear()
 
 
 class TestKfTextTraditionalConversion:

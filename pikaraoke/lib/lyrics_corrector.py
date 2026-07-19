@@ -264,10 +264,9 @@ def _normalize_for_comparison(text: str) -> str:
     """
     text = re.sub(r"\s+", "", text)
     try:
-        from opencc import OpenCC
+        from pikaraoke.lib.karaoke_subtitle import _get_opencc
 
-        cc = OpenCC("t2s")
-        return cc.convert(text)
+        return _get_opencc("t2s").convert(text)
     except ImportError:
         return text
 

@@ -7,6 +7,7 @@ left-to-right color-changing lyrics during playback.
 
 from __future__ import annotations
 
+import functools
 import re
 
 _HALLUCINATION_KEYWORDS = [
@@ -119,13 +120,23 @@ def _format_ass_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def _to_traditional_chinese(text: str) -> str:
-    """Convert simplified Chinese to traditional Chinese."""
-    try:
-        from opencc import OpenCC
+@functools.lru_cache(maxsize=None)
+def _get_opencc(config: str):
+    """Lazily build and cache an OpenCC converter.
 
-        cc = OpenCC("s2twp")
-        return cc.convert(text)
+    Building one loads a conversion dictionary from disk; the pipeline calls the converters
+    per character inside the ASS/alignment hot loops, so reconstructing every call stalled the
+    gevent event loop (the TV froze while subtitles were generating). Cache keyed by config.
+    """
+    from opencc import OpenCC
+
+    return OpenCC(config)
+
+
+def _to_traditional_chinese(text: str) -> str:
+    """Convert simplified Chinese to Taiwan traditional Chinese."""
+    try:
+        return _get_opencc("s2twp").convert(text)
     except ImportError:
         return text
 
