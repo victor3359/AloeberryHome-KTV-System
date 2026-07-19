@@ -627,6 +627,10 @@ async function _initMicScoring(songFilePath) {
   // Release the previous song's analyzer first — a skip or mid-song url change re-inits without
   // going through endSong, so without this the old mic stream + AudioContext + rAF loop leak.
   stopMicScoring();
+  // Clear stale frames from the previous song's meter BEFORE this song scores. window._pitchMeter
+  // is only replaced when init succeeds, so if getUserMedia fails below, the old meter would
+  // otherwise survive and endSong would record the previous singer's score for this singer.
+  if (window._pitchMeter) window._pitchMeter.reset();
   try {
     // Request mic permission
     const stream = await navigator.mediaDevices.getUserMedia({

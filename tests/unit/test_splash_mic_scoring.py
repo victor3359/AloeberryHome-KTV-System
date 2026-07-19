@@ -29,3 +29,15 @@ def test_splash_stops_mic_scoring_on_reinit_and_skip():
     assert "function stopMicScoring" in js
     # definition + at least the endSong, re-init, and skip call sites.
     assert js.count("stopMicScoring()") >= 3
+
+
+def test_mic_scoring_resets_meter_at_song_start_to_prevent_score_carryover():
+    """P1-2: window._pitchMeter is only replaced when a song's mic init SUCCEEDS. If the next
+    song's getUserMedia fails, the previous song's accumulated frames survive and endSong records
+    that score for the new singer (leaderboard corruption). _initMicScoring must reset the meter
+    at the top, before the mic-init try-block, so a failed init leaves 0 frames not a stale score."""
+    js = _read(_SPLASH_JS)
+    init_idx = js.index("async function _initMicScoring")
+    try_idx = js.index("try {", init_idx)
+    head = js[init_idx:try_idx]
+    assert "_pitchMeter.reset()" in head, "must reset the meter before the mic-init try-block"
