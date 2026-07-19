@@ -46,10 +46,10 @@ class TestMapCharsToWhisperWords:
         assert abs(result[0]["start"] - 0.0) < 0.01  # 我 anchored
         assert abs(result[3]["start"] - 3.0) < 0.01  # 愛 anchored (NOT pushed to excess)
         assert abs(result[4]["start"] - 4.0) < 0.01  # 你 anchored
-        assert 1.0 <= result[1]["start"] < 3.0       # 真 in the gap
-        assert 1.0 <= result[2]["start"] < 3.0       # 的 in the gap
+        assert 1.0 <= result[1]["start"] < 3.0  # 真 in the gap
+        assert 1.0 <= result[2]["start"] < 3.0  # 的 in the gap
         starts = [r["start"] for r in result]
-        assert starts == sorted(starts)              # monotonic
+        assert starts == sorted(starts)  # monotonic
 
     def test_leading_insertion_stays_monotonic_and_keeps_anchor(self):
         """Whisper missed the line's opening syllables (leading insertion). The online-only
@@ -100,14 +100,18 @@ class TestCorrectTyposNoCascade:
     def test_no_cascade_on_length_mismatch(self):
         """The fallback typo path must not cascade when online length != whisper length: an
         extra online char used to shift every subsequent char, corrupting a correct line."""
-        whisper = [{
-            "start": 1.0, "end": 4.0, "text": "我門紅塵做伴",
-            "words": [
-                {"word": "我門", "start": 1.0, "end": 2.0},
-                {"word": "紅塵", "start": 2.0, "end": 3.0},
-                {"word": "做伴", "start": 3.0, "end": 4.0},
-            ],
-        }]
+        whisper = [
+            {
+                "start": 1.0,
+                "end": 4.0,
+                "text": "我門紅塵做伴",
+                "words": [
+                    {"word": "我門", "start": 1.0, "end": 2.0},
+                    {"word": "紅塵", "start": 2.0, "end": 3.0},
+                    {"word": "做伴", "start": 3.0, "end": 4.0},
+                ],
+            }
+        ]
         # Extra leading 啊 makes online longer than whisper; homophones 門->們, 做->作.
         online = [{"start": 1.0, "end": 4.0, "text": "啊我們紅塵作伴", "words": []}]
         result = _correct_typos_with_online_lyrics(whisper, online)
@@ -116,15 +120,21 @@ class TestCorrectTyposNoCascade:
         assert text == "我們紅塵作伴"
 
     def test_equal_length_homophone_still_corrected(self):
-        whisper = [{
-            "start": 1.0, "end": 4.0, "text": "我們紅塵做伴",
-            "words": [
-                {"word": "我們", "start": 1.0, "end": 2.0},
-                {"word": "紅塵", "start": 2.0, "end": 3.0},
-                {"word": "做伴", "start": 3.0, "end": 4.0},
-            ],
-        }]
-        online = [{"start": 1.0, "end": 4.0, "text": "我們紅塵作伴", "words": []}]  # single homophone 做->作
+        whisper = [
+            {
+                "start": 1.0,
+                "end": 4.0,
+                "text": "我們紅塵做伴",
+                "words": [
+                    {"word": "我們", "start": 1.0, "end": 2.0},
+                    {"word": "紅塵", "start": 2.0, "end": 3.0},
+                    {"word": "做伴", "start": 3.0, "end": 4.0},
+                ],
+            }
+        ]
+        online = [
+            {"start": 1.0, "end": 4.0, "text": "我們紅塵作伴", "words": []}
+        ]  # single homophone 做->作
         result = _correct_typos_with_online_lyrics(whisper, online)
         text = "".join(w["word"] for seg in result for w in seg["words"])
         assert text == "我們紅塵作伴"
@@ -240,11 +250,15 @@ class TestAlignOnlineWithWhisperTiming:
         ]
         whisper = [
             {
-                "start": 25.0, "end": 29.0, "text": "你在房間像幻燈片",
+                "start": 25.0,
+                "end": 29.0,
+                "text": "你在房間像幻燈片",
                 "words": [{"word": "你在房間像幻燈片", "start": 25.0, "end": 29.0}],
             },
             {
-                "start": 30.0, "end": 34.0, "text": "你在我眼裡蔓延",
+                "start": 30.0,
+                "end": 34.0,
+                "text": "你在我眼裡蔓延",
                 "words": [{"word": "你在我眼裡蔓延", "start": 30.0, "end": 34.0}],
             },
         ]
@@ -277,21 +291,13 @@ class TestWrongSongRejection:
     def test_rejects_wrong_song_lyrics(self):
         """A wrong-song LRC whose lines never text-match the Whisper transcript must be rejected.
         The old gate only checked word-PRESENCE in a time window, so it accepted wrong text."""
-        online = self._segs(
-            ["完全不同的歌詞甲", "完全不同的歌詞乙", "完全不同的歌詞丙", "完全不同的歌詞丁", "完全不同的歌詞戊"]
-        )
-        whisper = self._whisper(
-            ["天空很藍海洋很寬", "微風輕拂過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"]
-        )
+        online = self._segs(["完全不同的歌詞甲", "完全不同的歌詞乙", "完全不同的歌詞丙", "完全不同的歌詞丁", "完全不同的歌詞戊"])
+        whisper = self._whisper(["天空很藍海洋很寬", "微風輕拂過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"])
         assert align_online_with_whisper_timing(online, whisper, "zh") is None
 
     def test_accepts_matching_song_with_minor_diffs(self):
-        online = self._segs(
-            ["天空很藍海洋很寬", "微風輕拂過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"]
-        )
-        whisper = self._whisper(
-            ["天空很藍海洋很寬", "微風輕撫過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"]
-        )
+        online = self._segs(["天空很藍海洋很寬", "微風輕拂過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"])
+        whisper = self._whisper(["天空很藍海洋很寬", "微風輕撫過臉龐", "我想起你的笑容", "在那個夏天午後", "時光匆匆流逝"])
         result = align_online_with_whisper_timing(online, whisper, "zh")
         assert result is not None
         assert len(result) == 5
@@ -320,6 +326,24 @@ class TestEstimateGlobalOffset:
         online = [{"start": 0.0, "text": "完全不同"}]
         whisper = [{"start": 50.0, "text": "totally different"}]
         assert _estimate_global_offset(online, whisper) == 0.0
+
+    def test_repeated_lyrics_do_not_poison_offset(self):
+        """愛人錯過 forensic (2026-07-19): with a repetitive song (chorus sung twice), best-text
+        matching pairs a second-chorus online line with the FIRST Whisper occurrence, producing
+        collision offsets (+38s here). With half the lines repeated, the median lands on a
+        collision and the whole LRC gets shifted ~46s early — verse 1 rendered during the MV's
+        silent intro. The estimator must recover the true offset (the densest cluster: EVERY
+        line supports it via its correct occurrence), not the raw median."""
+        true = -8.0  # whisper (MV) runs 8s later than the LRC timeline
+        texts = ["我肯定在幾百年前就說過愛你", "只是你忘了我也沒記起", "走過路過沒遇過"]
+        # chorus at 10/16/22 then repeated at 48/54/60 (LRC timeline)
+        online = [
+            {"start": t, "text": txt}
+            for t, txt in zip([10.0, 16.0, 22.0, 48.0, 54.0, 60.0], texts + texts)
+        ]
+        whisper = [{"start": seg["start"] - true, "text": seg["text"]} for seg in online]
+        offset = _estimate_global_offset(online, whisper)
+        assert abs(offset - true) < 1.0, f"expected ~{true}, got {offset}"
 
 
 class TestIsCreditLine:

@@ -278,27 +278,27 @@ def _estimate_global_offset(online_segments: list[dict], whisper_segments: list[
     which often has a different intro length. This calculates the median
     offset by matching lines purely on text similarity (ignoring time).
     """
+    # Collect offsets for ALL strong text pairings, not one best match per line: repeated lyrics
+    # (a chorus sung twice) make "best match" pick an arbitrary occurrence, and with enough
+    # repeated lines those occurrence collisions poison the median — the whole LRC then gets
+    # shifted onto a silent MV intro. The true offset is the densest cluster instead: every line
+    # supports it through its correct occurrence, while collisions scatter.
     offsets = []
     for oseg in online_segments:
         o_text = _normalize_for_comparison(oseg.get("text", ""))
         if not o_text:
             continue
-        best_ratio = 0.0
-        best_offset = 0.0
         for wseg in whisper_segments:
             w_text = _normalize_for_comparison(wseg.get("text", ""))
             if not w_text:
                 continue
-            ratio = SequenceMatcher(None, o_text, w_text).ratio()
-            if ratio > best_ratio and ratio > 0.6:
-                best_ratio = ratio
-                best_offset = oseg["start"] - wseg["start"]
-        if best_ratio > 0.6:
-            offsets.append(best_offset)
+            if SequenceMatcher(None, o_text, w_text).ratio() > 0.6:
+                offsets.append(oseg["start"] - wseg["start"])
     if not offsets:
         return 0.0
-    offsets.sort()
-    return offsets[len(offsets) // 2]
+    best_center = max(offsets, key=lambda c: sum(1 for o in offsets if abs(o - c) <= 2.0))
+    cluster = sorted(o for o in offsets if abs(o - best_center) <= 2.0)
+    return cluster[len(cluster) // 2]
 
 
 def _lyrics_text_match_fraction(online_segments: list[dict], whisper_segments: list[dict]) -> float:
