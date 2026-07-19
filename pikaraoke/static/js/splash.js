@@ -83,6 +83,14 @@ const formatTime = (seconds) => {
   return `${formattedMinutes}:${formattedSeconds}`;
 }
 
+// Escape user/song-controlled text before injecting via .html(). Song titles come from YouTube
+// filenames and singer names from a free-text phone prompt, so both are untrusted.
+const escapeHtml = (s) =>
+  String(s == null ? "" : s).replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+  );
+
 const testAutoplayCapability = async () => {
   // Test if autoplay with audio is allowed using a real video file
   try {
@@ -257,24 +265,24 @@ const handleNowPlayingUpdate = (np) => {
   if (np.now_playing) {
 
     // Handle updating now playing HTML
-    let nowPlayingHtml = `<span>${np.now_playing}</span> `;
+    let nowPlayingHtml = `<span>${escapeHtml(np.now_playing)}</span> `;
     if (np.now_playing_transpose !== 0) {
       nowPlayingHtml += `<span class='is-size-6 has-text-success'><b>Key</b>: ${getSemitonesLabel(np.now_playing_transpose)} </span>`;
     }
     $("#now-playing-song").html(nowPlayingHtml);
     const singerLabel = np.now_playing_user2
-      ? `${np.now_playing_user} &amp; ${np.now_playing_user2}`
-      : np.now_playing_user;
+      ? `${escapeHtml(np.now_playing_user)} &amp; ${escapeHtml(np.now_playing_user2)}`
+      : escapeHtml(np.now_playing_user);
     $("#now-playing-singer").html(singerLabel);
     $("#now-playing").fadeIn();
   } else {
     $("#now-playing").fadeOut();
   }
   if (np.up_next) {
-    $("#up-next-song").html(np.up_next);
+    $("#up-next-song").html(escapeHtml(np.up_next));
     const nextSingerLabel = np.next_user2
-      ? `${np.next_user} &amp; ${np.next_user2}`
-      : np.next_user;
+      ? `${escapeHtml(np.next_user)} &amp; ${escapeHtml(np.next_user2)}`
+      : escapeHtml(np.next_user);
     $("#up-next-singer").html(nextSingerLabel);
     $("#up-next").fadeIn();
   } else {
@@ -863,7 +871,7 @@ const setupSocketEvents = () => {
     const medals = ["1st", "2nd", "3rd"];
     const rows = data.map((entry, i) => {
       const rank = medals[i] || `${i + 1}.`;
-      return `<tr><td>${rank}</td><td>${entry.singer}</td><td>${entry.avg} pts</td></tr>`;
+      return `<tr><td>${rank}</td><td>${escapeHtml(entry.singer)}</td><td>${entry.avg} pts</td></tr>`;
     });
     $("#leaderboard-body").html(rows.join("") || "<tr><td colspan='3'>No scores yet.</td></tr>");
     $("#leaderboard-screen").fadeIn(500);
