@@ -11,6 +11,7 @@
 class PitchAnalyzer {
   constructor(audioContext, stream) {
     this.audioContext = audioContext;
+    this.stream = stream;
     this.source = audioContext.createMediaStreamSource(stream);
     this.analyser = audioContext.createAnalyser();
     this.analyser.fftSize = 4096;
@@ -31,6 +32,15 @@ class PitchAnalyzer {
   stop() {
     this.running = false;
     this.source.disconnect();
+    // Release the mic capture and the AudioContext. stop() previously only disconnected the
+    // source node, leaking one live getUserMedia stream + AudioContext per song (a long session
+    // stacked dozens, saturating the TV CPU and never releasing the OS mic indicator).
+    if (this.stream) {
+      this.stream.getTracks().forEach((track) => track.stop());
+    }
+    if (this.audioContext && this.audioContext.state !== "closed") {
+      this.audioContext.close().catch(() => {});
+    }
   }
 
   _loop() {

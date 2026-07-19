@@ -133,11 +133,8 @@ const hideVideo = () => {
 }
 
 const endSong = async (reason = null, showScore = false) => {
-  // Stop mic scoring
-  if (window._pitchAnalyzer) {
-    window._pitchAnalyzer.stop();
-    window._pitchAnalyzer = null;
-  }
+  // Stop mic scoring (PitchAnalyzer.stop releases the mic stream + AudioContext)
+  stopMicScoring();
   if (window._pitchMeter) {
     window._pitchMeter.hide();
   }
@@ -617,7 +614,19 @@ const applyPreferencesReset = (defaults) => {
 };
 
 // Microphone-based pitch scoring
+function stopMicScoring() {
+  // Stop + release the current analyzer (PitchAnalyzer.stop stops the mic tracks and closes its
+  // AudioContext). Safe to call when none is active.
+  if (window._pitchAnalyzer) {
+    window._pitchAnalyzer.stop();
+    window._pitchAnalyzer = null;
+  }
+}
+
 async function _initMicScoring(songFilePath) {
+  // Release the previous song's analyzer first — a skip or mid-song url change re-inits without
+  // going through endSong, so without this the old mic stream + AudioContext + rAF loop leak.
+  stopMicScoring();
   try {
     // Request mic permission
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -791,6 +800,9 @@ const setupSocketEvents = () => {
     }
   });
   socket.on('skip', (reason) => {
+    // Skip pauses without going through endSong, so release the analyzer here too.
+    stopMicScoring();
+    if (window._pitchMeter) window._pitchMeter.hide();
     const video = getVideoPlayer();
     const currVolume = video.volume;
     if (isMediaPlaying(video)) {
