@@ -47,14 +47,6 @@ class SongDatabase:
                     thumbnail_url TEXT DEFAULT ''
                 )"""
             )
-            conn.execute(
-                """CREATE TABLE IF NOT EXISTS favorites (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    UNIQUE(user, file_path)
-                )"""
-            )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_songs_language ON songs(language)")
             conn.execute(
@@ -83,11 +75,10 @@ class SongDatabase:
             conn.close()
 
     def remove_song(self, file_path: str) -> None:
-        """Remove a song and its favorites from the database."""
+        """Remove a song from the database."""
         with self._lock:
             conn = self._get_conn()
             conn.execute("DELETE FROM songs WHERE file_path=?", (file_path,))
-            conn.execute("DELETE FROM favorites WHERE file_path=?", (file_path,))
             conn.commit()
             conn.close()
 
@@ -100,7 +91,6 @@ class SongDatabase:
             for db_path in db_paths:
                 if db_path not in valid_paths:
                     conn.execute("DELETE FROM songs WHERE file_path=?", (db_path,))
-                    conn.execute("DELETE FROM favorites WHERE file_path=?", (db_path,))
                     removed += 1
             conn.commit()
             conn.close()
@@ -116,10 +106,6 @@ class SongDatabase:
             conn.execute("DELETE FROM songs WHERE file_path=?", (new_path,))
             conn.execute(
                 "UPDATE songs SET file_path = ? WHERE file_path = ?",
-                (new_path, old_path),
-            )
-            conn.execute(
-                "UPDATE favorites SET file_path = ? WHERE file_path = ?",
                 (new_path, old_path),
             )
             conn.commit()
@@ -204,33 +190,6 @@ class SongDatabase:
             ).fetchall()
             conn.close()
             return [dict(r) for r in rows]
-
-    def toggle_favorite(self, user: str, file_path: str) -> bool:
-        """Toggle favorite. Returns True if now favorited."""
-        with self._lock:
-            conn = self._get_conn()
-            exists = conn.execute(
-                "SELECT id FROM favorites WHERE user=? AND file_path=?", (user, file_path)
-            ).fetchone()
-            if exists:
-                conn.execute(
-                    "DELETE FROM favorites WHERE user=? AND file_path=?", (user, file_path)
-                )
-                conn.commit()
-                conn.close()
-                return False
-            conn.execute("INSERT INTO favorites (user, file_path) VALUES (?, ?)", (user, file_path))
-            conn.commit()
-            conn.close()
-            return True
-
-    def get_user_favorites(self, user: str) -> set[str]:
-        """Get user's favorite file paths as a set."""
-        with self._lock:
-            conn = self._get_conn()
-            rows = conn.execute("SELECT file_path FROM favorites WHERE user=?", (user,)).fetchall()
-            conn.close()
-            return {r["file_path"] for r in rows}
 
     def get_recommendations(self, file_path: str, limit: int = 10) -> list[dict]:
         """Get song recommendations based on same artist and language."""
@@ -342,7 +301,5 @@ class SongDatabase:
             )
             added += 1
 
-        logging.info(
-            "Song database synced: %d added, %d removed (orphaned)", added, removed
-        )
+        logging.info("Song database synced: %d added, %d removed (orphaned)", added, removed)
         return added, removed
