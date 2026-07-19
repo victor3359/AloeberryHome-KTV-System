@@ -16,7 +16,8 @@ def test_splash_escapes_song_and_singer_names_before_html_injection():
     untrusted. A name like <img src=x onerror=...> would run on the splash session, and a '<' or
     '&' in a Chinese title would break the overlay. Escape them first."""
     js = _read()
-    assert "const escapeHtml" in js or "function escapeHtml" in js
+    # the escaper is imported from the session-ui module (slice 5); the call sites stay in splash.
+    assert 'from "/static/js/modules/session-ui.js"' in js and "escapeHtml" in js
     assert "escapeHtml(np.now_playing)" in js
     assert "escapeHtml(np.now_playing_user)" in js
     assert "escapeHtml(np.up_next)" in js

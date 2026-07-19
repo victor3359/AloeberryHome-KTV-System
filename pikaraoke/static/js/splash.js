@@ -4,6 +4,7 @@ import { PitchAnalyzer } from "/static/js/pitch-analyzer.js";
 import { PitchMeter } from "/static/js/pitch-meter.js";
 import { startScore, setScoreReviews } from "/static/score.js";
 import { initPitchShift, resetPitchShift, applyPitchShift } from "/static/js/modules/pitch-shift.js";
+import { formatTime, escapeHtml, flashNotification, startClock, stopClock, startSessionTimer } from "/static/js/modules/session-ui.js";
 let socket = io();
 let mouseTimer = null;
 let cursorVisible = false;
@@ -21,9 +22,6 @@ let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
 let isMaster = false;
 let uiScale = null;
-let clockIntervalId = null;
-let sessionElapsedBase = 0;
-let sessionElapsedTimerId = null;
 
 // Browser detection
 const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
@@ -54,46 +52,6 @@ initPitchShift({
   getVideoPlayer: () => getVideoPlayer(),
   flashNotification: (m, c) => flashNotification(m, c),
 });
-
-const formatElapsed = (s) => {
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  return `${m}:${String(sec).padStart(2, "0")}`;
-};
-
-const startSessionTimer = (base) => {
-  sessionElapsedBase = base;
-  if (sessionElapsedTimerId) clearInterval(sessionElapsedTimerId);
-  const el = document.getElementById("session-elapsed-display");
-  if (el) el.textContent = formatElapsed(sessionElapsedBase);
-  document.getElementById("session-timer").style.display = "";
-  sessionElapsedTimerId = setInterval(() => {
-    sessionElapsedBase++;
-    if (el) el.textContent = formatElapsed(sessionElapsedBase);
-  }, 1000);
-};
-
-const formatTime = (seconds) => {
-  if (isNaN(seconds)) {
-    return "00:00";
-  }
-  const totalSeconds = Math.floor(seconds);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const secs = totalSeconds % 60;
-  const formattedMinutes = String(minutes).padStart(2, "0");
-  const formattedSeconds = String(secs).padStart(2, "0");
-  return `${formattedMinutes}:${formattedSeconds}`;
-}
-
-// Escape user/song-controlled text before injecting via .html(). Song titles come from YouTube
-// filenames and singer names from a free-text phone prompt, so both are untrusted.
-const escapeHtml = (s) =>
-  String(s == null ? "" : s).replace(
-    /[&<>"']/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-  );
 
 const testAutoplayCapability = async () => {
   // Test if autoplay with audio is allowed using a real video file
@@ -221,21 +179,6 @@ const endSong = async (reason = null, showScore = false) => {
 }
 
 const getVideoPlayer = () => $("#video")[0]
-
-const flashNotification = (message, categoryClass) => {
-  const sn = $("#splash-notification");
-  if (sn.html()) return;
-  sn.html(message);
-  sn.addClass(categoryClass);
-  sn.fadeIn();
-  setTimeout(() => {
-    sn.fadeOut();
-    setTimeout(() => {
-      sn.html("");
-      sn.removeClass(categoryClass);
-    }, 450);
-  }, 3000);
-}
 
 const setupScreensaver = () => {
   if (screensaverTimeoutSeconds > 0) {
@@ -550,22 +493,6 @@ const handleUnsupportedBrowser = () => {
       PikaraokeConfig.translations.unsupportedBrowser;
     modalContents.prepend(warningMessage);
   }
-}
-
-const startClock = () => {
-  if (clockIntervalId) return;
-  const update = () => {
-    const el = document.getElementById('clock');
-    if (el) el.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-  };
-  update();
-  clockIntervalId = setInterval(update, 1000);
-}
-
-const stopClock = () => {
-  if (!clockIntervalId) return;
-  clearInterval(clockIntervalId);
-  clockIntervalId = null;
 }
 
 const toggleBGMedia = (configKey, playFn, disabled) => {
