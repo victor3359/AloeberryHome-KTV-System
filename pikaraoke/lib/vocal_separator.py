@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -121,6 +122,21 @@ def _is_nonempty_file(path: str) -> bool:
         return os.path.getsize(path) > 0
     except OSError:
         return False
+
+
+_LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2}$")
+
+
+def _sanitize_language(language: str | None) -> str | None:
+    """Whitelist an explicit Whisper language to a 2-letter ISO code.
+
+    The value is interpolated into the ``python -c`` transcription script, so any
+    non-conforming input (including injection attempts) is dropped to None and the
+    pipeline falls back to filename detection / Whisper auto-detect.
+    """
+    if language and _LANGUAGE_CODE_RE.match(language):
+        return language
+    return None
 
 
 def _atomic_write_text(path: str, content: str) -> None:
@@ -387,7 +403,9 @@ class VocalSeparator:
         output_file = tmp.name
         try:
             logging.info("Starting transcription: %s", audio_source)
-            detected_lang = language or self._detect_language_from_filename(song_path)
+            detected_lang = _sanitize_language(language) or self._detect_language_from_filename(
+                song_path
+            )
 
             # Run Whisper in a subprocess to avoid GIL contention with Flask/gevent.
             # In-process Whisper with 10 PyTorch threads starved the main thread.
@@ -493,12 +511,12 @@ class VocalSeparator:
         reused, making reprocessing idempotent and resumable.
 
         ``language`` forces the Whisper transcription language (e.g. "en"); when
-        omitted it is derived from the filename, then the online lyrics.
+        omitted it is derived from the filename, else Whisper auto-detects.
         """
         with self._lock:
             stem_paths = None
             ass_path = None
-            language = ""
+            detected_language = ""
             used_stems = False
 
             # Step 1: Vocal separation (Demucs) — 0-50%
@@ -526,7 +544,7 @@ class VocalSeparator:
                     success=True,
                     stem_paths=stem_paths,
                     ass_path=existing_ass,
-                    language=language,
+                    language=detected_language,
                     used_stems=used_stems,
                 )
 
@@ -538,7 +556,7 @@ class VocalSeparator:
                 # a wrong-song LRC could be in a different language and force the wrong one.
                 trans_result = self.transcribe(song_path, language=language)
                 if trans_result.success and trans_result.segments:
-                    language = trans_result.language
+                    detected_language = trans_result.language
                     self._events.emit("processing_progress", {"stage": "歌詞校對中", "percent": 85})
                     raw_segments = trans_result.segments
 
@@ -548,7 +566,7 @@ class VocalSeparator:
                     if online_segments:
                         # Use UNFILTERED Whisper (all timestamps) for alignment
                         aligned = align_online_with_whisper_timing(
-                            online_segments, raw_segments, language or ""
+                            online_segments, raw_segments, detected_language or ""
                         )
                         if aligned:
                             # Aligned text is from online lyrics; filter credit lines
@@ -556,9 +574,7 @@ class VocalSeparator:
                         else:
                             # Alignment failed; filter Whisper then correct typos
                             segments = _filter_whisper_hallucinations(raw_segments)
-                            segments = _correct_typos_with_online_lyrics(
-                                segments, online_segments
-                            )
+                            segments = _correct_typos_with_online_lyrics(segments, online_segments)
                     else:
                         # No online lyrics; filter Whisper only
                         segments = _filter_whisper_hallucinations(raw_segments)
@@ -595,6 +611,6 @@ class VocalSeparator:
                 success=success,
                 stem_paths=stem_paths,
                 ass_path=ass_path,
-                language=language,
+                language=detected_language,
                 used_stems=used_stems,
             )

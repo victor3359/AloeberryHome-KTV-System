@@ -23,7 +23,6 @@ from pikaraoke.lib.vocal_separator import (
     generate_karaoke_ass,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -245,10 +244,7 @@ class TestFilterWhisperHallucinations:
     def test_removes_repeated_text_beyond_threshold(self):
         """Repeated identical text (>3 times) is removed as hallucination."""
         seg = {"start": 0, "end": 3, "text": "la la la", "no_speech_prob": 0.0}
-        segments = [
-            {**seg, "start": i * 3, "end": i * 3 + 3}
-            for i in range(6)
-        ]
+        segments = [{**seg, "start": i * 3, "end": i * 3 + 3} for i in range(6)]
         result = _filter_whisper_hallucinations(segments)
         # First occurrence kept, consecutive duplicate skipped, so only odd-indexed
         # survive until count reaches 4 (indices 0, 2, 4 would be non-consecutive).
@@ -446,14 +442,10 @@ class TestProcess:
                 "no_speech_prob": 0.0,
             }
         ]
-        mock_result = TranscriptionResult(
-            success=True, segments=fake_segments, language="en"
-        )
+        mock_result = TranscriptionResult(success=True, segments=fake_segments, language="en")
 
         with patch.object(separator, "transcribe", return_value=mock_result):
-            with patch(
-                "pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None
-            ):
+            with patch("pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None):
                 with patch(
                     "pikaraoke.lib.pitch_extractor.extract_pitch",
                     side_effect=ImportError("not installed"),
@@ -579,9 +571,7 @@ class TestSeparateAtomicRename:
         (demucs_dir / "no_vocals.mp3").write_text("fresh-instrumental")
 
         completed = MagicMock(returncode=0, stderr="", stdout="")
-        with patch(
-            "pikaraoke.lib.vocal_separator.subprocess.run", return_value=completed
-        ):
+        with patch("pikaraoke.lib.vocal_separator.subprocess.run", return_value=completed):
             result = separator.separate(song)
 
         assert result.success is True, result.error
@@ -643,9 +633,7 @@ class TestProcessDegradedSeparation:
 
     @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", True)
     @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
-    def test_used_stems_true_when_separation_succeeds(
-        self, separator, tmp_path, events
-    ):
+    def test_used_stems_true_when_separation_succeeds(self, separator, tmp_path, events):
         song = str(tmp_path / "Song.mp4")
         open(song, "w").close()
         vocals = str(tmp_path / "Song_vocals.mp3")
@@ -707,13 +695,9 @@ class TestProcessAtomicAssWrite:
         with patch.object(
             separator,
             "transcribe",
-            return_value=TranscriptionResult(
-                success=True, segments=fake_segments, language="en"
-            ),
+            return_value=TranscriptionResult(success=True, segments=fake_segments, language="en"),
         ):
-            with patch(
-                "pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None
-            ):
+            with patch("pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None):
                 with patch(
                     "pikaraoke.lib.pitch_extractor.extract_pitch",
                     side_effect=ImportError("nope"),
@@ -774,13 +758,9 @@ class TestProcessResumable:
         with patch.object(
             separator,
             "transcribe",
-            return_value=TranscriptionResult(
-                success=True, segments=fake_segments, language="en"
-            ),
+            return_value=TranscriptionResult(success=True, segments=fake_segments, language="en"),
         ) as mock_transcribe:
-            with patch(
-                "pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None
-            ):
+            with patch("pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None):
                 with patch(
                     "pikaraoke.lib.pitch_extractor.extract_pitch",
                     side_effect=ImportError("nope"),
@@ -811,13 +791,9 @@ class TestProcessResumable:
         with patch.object(
             separator,
             "transcribe",
-            return_value=TranscriptionResult(
-                success=True, segments=fake_segments, language="en"
-            ),
+            return_value=TranscriptionResult(success=True, segments=fake_segments, language="en"),
         ) as mock_transcribe:
-            with patch(
-                "pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None
-            ):
+            with patch("pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None):
                 with patch(
                     "pikaraoke.lib.pitch_extractor.extract_pitch",
                     side_effect=ImportError("nope"),
@@ -844,9 +820,7 @@ class TestTranscribeTempCleanup:
             return f
 
         failed = MagicMock(returncode=1, stderr="whisper exploded", stdout="")
-        with patch(
-            "pikaraoke.lib.vocal_separator.subprocess.run", return_value=failed
-        ):
+        with patch("pikaraoke.lib.vocal_separator.subprocess.run", return_value=failed):
             with patch("tempfile.NamedTemporaryFile", side_effect=tracking_named):
                 with patch("tempfile.mktemp", side_effect=AssertionError("mktemp used")):
                     result = separator.transcribe(song)
@@ -909,3 +883,59 @@ class TestEnsureSubtitlesAsync:
         # must not raise, and pending must be cleared in finally
         assert separator.ensure_subtitles_async("/songs/a.mp4") is True
         assert "/songs/a.mp4" not in separator._pending
+
+
+class TestLanguageOverride:
+    """P0-3: the /reprocess language override must actually reach Whisper (it was
+    silently clobbered by a leftover ``language = ""`` accumulator), AND it must be
+    neutralized before being interpolated into the ``python -c`` transcription script,
+    or making the override work would open a subprocess code-injection hole."""
+
+    def test_process_forwards_explicit_language_to_transcribe(self, separator, monkeypatch):
+        # Regression: process() reset ``language = ""`` at the top, discarding the
+        # explicit override before transcribe() ever saw it.
+        monkeypatch.setattr("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", False)
+        monkeypatch.setattr("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+        seen = {}
+
+        def fake_transcribe(song_path, language=None):
+            seen["language"] = language
+            return TranscriptionResult(success=False, error="stop here")
+
+        separator.transcribe = fake_transcribe
+        separator.process("/songs/x.mp4", force=True, language="en")
+        assert seen["language"] == "en"
+
+    def test_sanitize_language_allows_two_letter_iso_codes(self):
+        from pikaraoke.lib.vocal_separator import _sanitize_language
+
+        assert _sanitize_language("en") == "en"
+        assert _sanitize_language("zh") == "zh"
+        assert _sanitize_language("ja") == "ja"
+
+    def test_sanitize_language_rejects_injection_and_junk(self):
+        from pikaraoke.lib.vocal_separator import _sanitize_language
+
+        assert _sanitize_language("en'; import os; os.system('x') #") is None
+        assert _sanitize_language("english") is None  # not two letters
+        assert _sanitize_language("EN") is None  # not lowercase
+        assert _sanitize_language("e n") is None
+        assert _sanitize_language("") is None
+        assert _sanitize_language(None) is None
+
+    def test_transcribe_never_interpolates_raw_language_into_subprocess_script(
+        self, separator, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+        captured = {}
+
+        def fake_run(cmd, *args, **kwargs):
+            captured["script"] = cmd[2]  # [python, "-c", script, audio, out]
+            return MagicMock(returncode=1, stderr="stopped")
+
+        monkeypatch.setattr("pikaraoke.lib.vocal_separator.subprocess.run", fake_run)
+        song = str(tmp_path / "song.mp4")
+        open(song, "w").close()
+        separator.transcribe(song, language="en'); import os; os.system('pwned') #")
+        assert "os.system('pwned')" not in captured["script"]
+        assert "import os; os.system" not in captured["script"]
