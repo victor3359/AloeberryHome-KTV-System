@@ -40,13 +40,10 @@ def test_bg_media_uses_injected_accessors_not_splash_state():
 
 def test_splash_imports_bg_media_and_inits_it():
     splash = _read(_SPLASH)
-    assert (
-        'import {' in splash
-        and 'from "/static/js/modules/bg-media.js";' in splash
-    )
+    assert "import {" in splash and 'from "/static/js/modules/bg-media.js";' in splash
     # The injected accessors are wired exactly once.
     assert "initBgMedia({" in splash
-    assert "getNowPlaying: () => nowPlaying" in splash
+    assert "getNowPlaying: () => (player ? player.getNowPlaying()" in splash
     assert "getAutoplayConfirmed: () => autoplayConfirmed" in splash
     assert "isMediaPlaying" in splash  # passed through as the third dep
 
@@ -69,7 +66,9 @@ def test_splash_no_longer_defines_bg_media_functions_or_state():
         "const bgMediaResumeDelay =",
         "const hasBgVideo =",
     ):
-        assert decl not in splash, f"splash.js must no longer define `{decl}` (moved to bg-media.js)"
+        assert (
+            decl not in splash
+        ), f"splash.js must no longer define `{decl}` (moved to bg-media.js)"
     # player-core helpers that must STAY in splash:
     assert "const isMediaPlaying =" in splash
     assert "const getVideoPlayer =" in splash

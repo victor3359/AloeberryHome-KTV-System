@@ -3,6 +3,7 @@ import os
 _PKG = os.path.join(os.path.dirname(__file__), "..", "..", "pikaraoke")
 _SPLASH_JS = os.path.join(_PKG, "static", "js", "splash.js")
 _PITCH_ANALYZER = os.path.join(_PKG, "static", "js", "pitch-analyzer.js")
+_PLAYER_CORE = os.path.join(_PKG, "static", "js", "modules", "player-core.js")
 
 
 def _read(path):
@@ -27,8 +28,10 @@ def test_splash_stops_mic_scoring_on_reinit_and_skip():
     it is stopped in both places. A shared stopMicScoring() helper covers endSong, re-init, skip."""
     js = _read(_SPLASH_JS)
     assert "function stopMicScoring" in js
-    # definition + at least the endSong, re-init, and skip call sites.
-    assert js.count("stopMicScoring()") >= 3
+    assert "stopMicScoring()" in js  # called at the top of _initMicScoring
+    # the endSong + skip call sites moved to player-core (slice 9), which calls d.stopMicScoring().
+    pc = _read(_PLAYER_CORE)
+    assert pc.count("d.stopMicScoring()") >= 2
 
 
 def test_pitch_analyzer_band_limits_tau_for_efficiency():

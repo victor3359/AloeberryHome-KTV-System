@@ -5,6 +5,7 @@ _PKG = os.path.join(os.path.dirname(__file__), "..", "..", "pikaraoke")
 _SCORE = os.path.join(_PKG, "static", "score.js")
 _SPLASH_JS = os.path.join(_PKG, "static", "js", "splash.js")
 _SPLASH_HTML = os.path.join(_PKG, "templates", "splash.html")
+_PLAYER_CORE = os.path.join(_PKG, "static", "js", "modules", "player-core.js")
 
 
 def _read(path):
@@ -30,11 +31,13 @@ def test_score_js_owns_score_reviews_off_window():
 
 
 def test_splash_imports_scoring_and_drops_window_score_reviews():
-    js = _read(_SPLASH_JS)
-    assert re.search(r'import \{[^}]*\bstartScore\b[^}]*\} from "/static/score\.js"', js)
-    assert "setScoreReviews" in js
-    assert "window.scoreReviews" not in js
-    assert "setScoreReviews(phrases)" in js
+    # The scoring entrypoints are imported by player-core (slice 9), which wires the socket handler.
+    pc = _read(_PLAYER_CORE)
+    assert re.search(r'import \{[^}]*\bstartScore\b[^}]*\} from "/static/score\.js"', pc)
+    assert "setScoreReviews(phrases)" in pc
+    # window.scoreReviews is gone from both splash and player-core.
+    assert "window.scoreReviews" not in _read(_SPLASH_JS)
+    assert "window.scoreReviews" not in pc
 
 
 def test_splash_html_no_classic_score_script_tag():

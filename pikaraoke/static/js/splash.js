@@ -2,26 +2,22 @@ import { startScreensaver, stopScreensaver } from "/static/screensaver.js";
 import { getBackgroundMusicPlayer, playBGMusic, playBGVideo, shouldBackgroundMediaPlay, updateBackgroundMediaState, setupBackgroundMusicPlayer, initBgMedia } from "/static/js/modules/bg-media.js";
 import { PitchAnalyzer } from "/static/js/pitch-analyzer.js";
 import { PitchMeter } from "/static/js/pitch-meter.js";
-import { startScore, setScoreReviews } from "/static/score.js";
-import { initPitchShift, resetPitchShift, applyPitchShift } from "/static/js/modules/pitch-shift.js";
-import { formatTime, escapeHtml, flashNotification, startClock, stopClock, startSessionTimer } from "/static/js/modules/session-ui.js";
+import { initPitchShift } from "/static/js/modules/pitch-shift.js";
+import { flashNotification, startClock, stopClock } from "/static/js/modules/session-ui.js";
 import { createPreferences } from "/static/js/modules/preferences.js";
-import { updateSubtitles } from "/static/js/modules/subtitles.js";
-import { setupHls, destroyHls, switchAudioTrack } from "/static/js/modules/audio-pipeline.js";
-let socket = io();
+import { initPlayerCore } from "/static/js/modules/player-core.js";
+
+// The player-core controller (sockets + now-playing lifecycle), assigned once initPlayerCore runs
+// below. splash.js is now the composition root: it wires the feature modules and owns only the
+// permissions / screensaver / overlay-menu / mic-scoring / ui-scaling concerns.
+let player;
 let mouseTimer = null;
 let cursorVisible = false;
-let nowPlaying = {};
 let showMenu = false;
 let menuButtonVisible = false;
 let autoplayConfirmed = false;
-let volume = 0.85;
-const playbackStartTimeout = 10000;
-let isScoreShown = false;
-let currentVideoUrl = null;
 let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
-let isMaster = false;
 let uiScale = null;
 
 // Browser detection
@@ -40,10 +36,10 @@ const isMediaPlaying = (media) =>
     media.readyState > 2
   );
 
-// Wire bg-media's injected accessors before any bg-media function (setupScreensaver,
-// setupBackgroundMusicPlayer, the now_playing handler) can run.
+// Wire bg-media's injected accessors. getNowPlaying resolves through the player-core controller
+// once assigned (all callers run at runtime, after initPlayerCore below).
 initBgMedia({
-  getNowPlaying: () => nowPlaying,
+  getNowPlaying: () => (player ? player.getNowPlaying() : {}),
   getAutoplayConfirmed: () => autoplayConfirmed,
   isMediaPlaying,
 });
@@ -95,85 +91,12 @@ const handleConfirmation = () => {
   $('#permissions-modal').removeClass('is-active');
   autoplayConfirmed = true;
   updateBackgroundMediaState(true);
-  loadNowPlaying();
+  player.loadNowPlaying();
 };
 window.handleConfirmation = handleConfirmation;
 
 const hideVideo = () => {
   $("#video-container").hide();
-}
-
-const endSong = async (reason = null, showScore = false) => {
-  // Stop mic scoring (PitchAnalyzer.stop releases the mic stream + AudioContext)
-  stopMicScoring();
-  if (window._pitchMeter) {
-    window._pitchMeter.hide();
-  }
-
-  // Reset pitch to native for the next song. The pitch-shift graph persists for the whole
-  // session (see resetPitchShift): #video can be captured only once, so closing the context
-  // would leave it routed into a dead graph and mute every later song.
-  resetPitchShift();
-
-  if (showScore && !PikaraokeConfig.disableScore) {
-    const singer = nowPlaying.now_playing_user;
-    const song = nowPlaying.now_playing;
-    isScoreShown = true;
-
-    // Use mic-based score if available, otherwise random
-    let scoreValue;
-    if (window._pitchMeter && window._pitchMeter.totalFrames > 10) {
-      scoreValue = window._pitchMeter.getScore();
-      window._pitchMeter.reset();
-    }
-    if (scoreValue === undefined) {
-      scoreValue = await startScore("/static/");
-    } else {
-      // Show the calculated score with the existing score animation
-      await startScore("/static/", scoreValue);
-    }
-    isScoreShown = false;
-    if (singer && scoreValue !== undefined) {
-      $.post("/record_score", { singer, score: scoreValue, song });
-    }
-  }
-  currentVideoUrl = null;
-  $("#progress-bar-container").hide();
-  $("#progress-bar-fill").css("width", "0%");
-  if (nowPlaying.up_next) {
-    $("#transition-singer-name").text(nowPlaying.next_user || "");
-    $("#transition-song-name").text(nowPlaying.up_next);
-    var ts = document.getElementById("transition-screen");
-    ts.style.display = "flex";
-    ts.classList.remove("transition-enter-active");
-    void ts.offsetWidth;
-    ts.classList.add("transition-enter-active");
-    // Countdown timer
-    var delay = PikaraokeConfig.splashDelay || 2;
-    var remaining = delay;
-    $("#transition-countdown").text("Starting in " + remaining + "s...");
-    if (window._transCountdown) clearInterval(window._transCountdown);
-    window._transCountdown = setInterval(function() {
-      remaining--;
-      if (remaining > 0) {
-        $("#transition-countdown").text("Starting in " + remaining + "s...");
-      } else {
-        $("#transition-countdown").text("Preparing...");
-        clearInterval(window._transCountdown);
-      }
-    }, 1000);
-  }
-  destroyHls();
-  const video = getVideoPlayer();
-  video.pause();
-  $("#video-source").attr("src", "");
-  video.load();
-  hideVideo();
-  if (isMaster) {
-    socket.emit("end_song", reason);
-  } else {
-    console.log("Slave active (read-only): skipping end_song emission");
-  }
 }
 
 const getVideoPlayer = () => $("#video")[0]
@@ -203,124 +126,6 @@ const setupScreensaver = () => {
       idleTime++;
     }, 1000)
   }
-}
-
-const handleNowPlayingUpdate = (np) => {
-  nowPlaying = np;
-  if (np.now_playing) {
-
-    // Handle updating now playing HTML
-    let nowPlayingHtml = `<span>${escapeHtml(np.now_playing)}</span> `;
-    if (np.now_playing_transpose !== 0) {
-      nowPlayingHtml += `<span class='is-size-6 has-text-success'><b>Key</b>: ${getSemitonesLabel(np.now_playing_transpose)} </span>`;
-    }
-    $("#now-playing-song").html(nowPlayingHtml);
-    const singerLabel = np.now_playing_user2
-      ? `${escapeHtml(np.now_playing_user)} &amp; ${escapeHtml(np.now_playing_user2)}`
-      : escapeHtml(np.now_playing_user);
-    $("#now-playing-singer").html(singerLabel);
-    $("#now-playing").fadeIn();
-  } else {
-    $("#now-playing").fadeOut();
-  }
-  if (np.up_next) {
-    $("#up-next-song").html(escapeHtml(np.up_next));
-    const nextSingerLabel = np.next_user2
-      ? `${escapeHtml(np.next_user)} &amp; ${escapeHtml(np.next_user2)}`
-      : escapeHtml(np.next_user);
-    $("#up-next-singer").html(nextSingerLabel);
-    $("#up-next").fadeIn();
-  } else {
-    $("#up-next").fadeOut();
-  }
-
-  // Update session elapsed timer
-  if (np.session_elapsed !== undefined) {
-    startSessionTimer(np.session_elapsed);
-  }
-
-  // Update bg music and video state
-  if (np.now_playing || np.up_next) {
-    idleTime = 0;
-  }
-  updateBackgroundMediaState();
-
-  const video = getVideoPlayer();
-
-  // Subtitles (SubtitlesOctopus/libass) — owned by modules/subtitles.js.
-  updateSubtitles(np, video, uiScale);
-
-  if (!np.now_playing_url) {
-    $("#progress-bar-container").hide();
-    $("#progress-bar-fill").css("width", "0%");
-    if (!np.up_next) {
-      $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
-    }
-  }
-
-  if (np.now_playing_url && np.now_playing_url !== currentVideoUrl) {
-    // Reset pitch to native for the new song; keep the persistent graph (see resetPitchShift).
-    resetPitchShift();
-
-    $("#transition-screen").fadeOut(400, function() { this.classList.remove("transition-enter-active"); });
-    $("#progress-bar-fill").css({"width": "0%", "transition": "none"});
-    $("#progress-bar-container").show();
-    // Re-enable smooth transition after initial buffering settles
-    setTimeout(function() { $("#progress-bar-fill").css("transition", "width 0.8s linear"); }, 3000);
-    currentVideoUrl = np.now_playing_url;
-    const streamUrl = np.now_playing_url;
-    $("#video-source").attr("src", "");
-    video.load();
-    $("#video-source").attr("src", streamUrl);
-
-    if (streamUrl.endsWith('.m3u8')) {
-      setupHls(streamUrl, video, { isChrome, isEdge, isMobileSafari });
-    }
-
-    video.load();
-    if (volume !== np.volume) {
-      volume = np.volume;
-      video.volume = volume;
-    }
-
-    const duration = $("#duration");
-    if (np.now_playing_duration) {
-      duration.text(`/${formatTime(np.now_playing_duration)}`);
-      duration.show();
-    } else {
-      duration.hide();
-    }
-
-    $("#video-container").show();
-
-    video.play().catch(err => {
-      console.error('Play failed:', err);
-      setTimeout(() => video.play(), 1000);
-    });
-
-    // Initialize mic-based pitch scoring (if not disabled)
-    if (!PikaraokeConfig.disableScore) {
-      _initMicScoring(np.now_playing_filename || "");
-    }
-
-    if (np.now_playing_position && isMediaPlaying(video)) {
-      if (Math.abs(video.currentTime - np.now_playing_position) > 2) {
-        console.log("Syncing to server position:", np.now_playing_position);
-        video.currentTime = np.now_playing_position;
-      }
-    }
-
-    setTimeout(() => {
-      if (!isMediaPlaying(video) && !video.paused) {
-        endSong("failed to start");
-      }
-    }, playbackStartTimeout);
-  }
-}
-
-async function loadNowPlaying() {
-  const data = await $.get("/now_playing");
-  handleNowPlayingUpdate(JSON.parse(data));
 }
 
 const setupOverlayMenus = () => {
@@ -375,47 +180,6 @@ const setupOverlayMenus = () => {
       $(".navbar-burger").click();
     }
   });
-}
-
-const setupVideoPlayer = () => {
-  $('#video-container').hide();
-  const video = getVideoPlayer();
-  video.addEventListener("play", () => {
-    $("#video-container").show();
-    if (isMaster) {
-      setTimeout(() => { socket.emit("start_song") }, 1200);
-    }
-  });
-
-  // Master reports playback position to server
-  setInterval(() => {
-    if (isMaster && isMediaPlaying(video)) {
-      socket.emit("playback_position", video.currentTime);
-    }
-  }, 1000);
-
-  video.addEventListener("ended", () => { endSong("complete", true); });
-  video.addEventListener("timeupdate", (e) => {
-    $("#current").text(formatTime(video.currentTime));
-    const duration = video.duration || nowPlaying.now_playing_duration;
-    if (duration > 0 && video.currentTime > 2) {
-      $("#progress-bar-fill").css("width", (video.currentTime / duration * 100) + "%");
-    }
-  });
-  $("#video source")[0].addEventListener("error", (e) => {
-    if (isMediaPlaying(video)) {
-      endSong("error while playing");
-    }
-  });
-  window.addEventListener(
-    'beforeunload',
-    function (event) {
-      if (isMediaPlaying(video)) {
-        endSong("splash screen closed");
-      }
-    },
-    true
-  );
 }
 
 const handleUnsupportedBrowser = () => {
@@ -533,170 +297,25 @@ async function _initMicScoring(songFilePath) {
   }
 }
 
-const setupSocketEvents = () => {
-  // Idempotent: drop any handlers from a prior setup before (re)binding. handleSocketRecovery
-  // re-invokes this on visibilitychange and io() returns the same multiplexed socket, so without
-  // this every handler — including 'connect' -> register_splash — would stack a duplicate. The
-  // second register_splash from the same sid makes the server reply 'slave', demoting the only TV
-  // so it stops emitting end_song and the queue stalls when a song finishes.
-  socket.off();
-  socket.on('connect', () => {
-    console.log('Socket connected');
-    socket.emit("register_splash");
-    // Re-fetch now_playing state after reconnection
-    $.get('/now_playing', function(data) {
-      var np = JSON.parse(data);
-      if (np && np.now_playing) {
-        handleNowPlayingUpdate(np);
-      }
-    });
-  });
-  socket.on('splash_role', (role) => {
-    isMaster = (role === "master");
-    console.log("Splash role assigned:", role, isMaster ? "(Master active)" : "(Slave active - read-only)");
-  });
-  socket.on('connect_error', (error) => {
-    console.error('Connection error:', error);
-    flashNotification(PikaraokeConfig.translations.socketConnectionLost, "is-danger");
-  });
-  socket.on('disconnect', (reason) => {
-    console.warn('Socket disconnected:', reason);
-    flashNotification(PikaraokeConfig.translations.socketConnectionLost, "is-danger");
-  });
-  socket.on('pause', () => {
-    const video = getVideoPlayer();
-    const currVolume = video.volume;
-    if (!video.paused) {
-      $(video).animate({ volume: 0 }, 1000, () => {
-        video.pause();
-        video.volume = currVolume;
-      });
-    }
-  });
-  socket.on('play', () => {
-    const video = getVideoPlayer();
-    const currVolume = video.volume;
-    if (video.paused) {
-      video.play();
-      video.volume = 0;
-      $(video).animate({ volume: currVolume }, 1000);
-    }
-  });
-  socket.on('skip', (reason) => {
-    // Skip pauses without going through endSong, so release the analyzer here too.
-    stopMicScoring();
-    if (window._pitchMeter) window._pitchMeter.hide();
-    const video = getVideoPlayer();
-    const currVolume = video.volume;
-    if (isMediaPlaying(video)) {
-      $(video).animate({ volume: 0 }, 1000, () => {
-        video.pause();
-        video.volume = currVolume;
-        hideVideo();
-      });
-    } else {
-      video.pause();
-      hideVideo();
-    }
-  });
-  socket.on('volume', (val) => {
-    const video = getVideoPlayer();
-    if (val === "up") {
-      video.volume = Math.min(1, video.volume + 0.1);
-    } else if (val === "down") {
-      video.volume = Math.max(0, video.volume - 0.1);
-    } else {
-      video.volume = val;
-    }
-  });
-  socket.on('restart', () => {
-    const video = getVideoPlayer();
-    video.currentTime = 0;
-    if (video.paused) video.play();
-  });
-  socket.on("notification", (data) => {
-    const notification = data.split("::");
-    const message = notification[0];
-    const categoryClass = notification.length > 1 ? notification[1] : "is-primary";
-    flashNotification(message, categoryClass);
-    if (isMaster) {
-      socket.emit("clear_notification");
-    }
-  });
-  socket.on("now_playing", handleNowPlayingUpdate);
-  socket.on("preferences_update", applyPreferenceUpdate);
-  socket.on("preferences_reset", applyPreferencesReset);
-  socket.on("score_phrases_update", (phrases) => { setScoreReviews(phrases); });
-
-  socket.on("leaderboard", (data) => {
-    const medals = ["1st", "2nd", "3rd"];
-    const rows = data.map((entry, i) => {
-      const rank = medals[i] || `${i + 1}.`;
-      return `<tr><td>${rank}</td><td>${escapeHtml(entry.singer)}</td><td>${entry.avg} pts</td></tr>`;
-    });
-    $("#leaderboard-body").html(rows.join("") || "<tr><td colspan='3'>No scores yet.</td></tr>");
-    $("#leaderboard-screen").fadeIn(500);
-  });
-
-  socket.on("hide_leaderboard", () => {
-    $("#leaderboard-screen").fadeOut(400);
-  });
-
-  // Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change)
-  socket.on("pitch_shift", applyPitchShift);
-
-  // Instant audio track switching (multi-audio HLS)
-  socket.on("audio_mode_switch", (mode) => switchAudioTrack(mode, getVideoPlayer()));
-
-  socket.on("session_summary", (data) => {
-    $("#summary-songs").text(data.total_songs || 0);
-    var secs = data.elapsed_seconds || 0;
-    var h = Math.floor(secs / 3600);
-    var m = Math.floor((secs % 3600) / 60);
-    $("#summary-duration").text(h > 0 ? h + "h " + m + "m" : m + " min");
-    $("#summary-singers").text(data.total_singers || 0);
-    if (data.most_active_singer) {
-      $("#summary-mvp").text(data.most_active_singer);
-      $("#summary-mvp-row").show();
-    }
-    if (data.top_scorer) {
-      $("#summary-top-scorer").text(data.top_scorer);
-      $("#summary-top-scorer-row").show();
-    }
-    if (data.most_played_song) {
-      $("#summary-hit-song").text(data.most_played_song);
-      $("#summary-hit-row").show();
-    }
-    $("#session-summary-screen").fadeIn(600);
-    setTimeout(function() { $("#session-summary-screen").fadeOut(800); }, 12000);
-  });
-
-  socket.on("playback_position", (position) => {
-    if (!isMaster) {
-      const video = getVideoPlayer();
-      if (isMediaPlaying(video)) {
-        if (Math.abs(video.currentTime - position) > 2) {
-          console.log("Slave drifting, syncing position to:", position);
-          video.currentTime = position;
-        }
-      }
-    }
-  });
-}
-
-const handleSocketRecovery = () => {
-  // A socket may disconnect if the tab is backgrounded for a while
-  // Reconnect and configure event listeners when tab becomes visible again
-  document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === 'visible') {
-      autoplayConfirmed && loadNowPlaying();
-      if (!socket.connected) {
-        socket = io();
-        setupSocketEvents();
-      }
-    }
-  });
-}
+// Initialize the player-core controller: it owns the now-playing lifecycle + all socket wiring and
+// runs setupSocketEvents immediately (outside document ready), matching the original ordering. All
+// its deps are defined above; the video-element / idle-counter / autoplay / ui-scale accessors are
+// injected so the shared state stays here.
+player = initPlayerCore({
+  getVideoPlayer,
+  isMediaPlaying,
+  hideVideo,
+  stopMicScoring,
+  initMicScoring: _initMicScoring,
+  browser: { isChrome, isEdge, isMobileSafari },
+  getAutoplayConfirmed: () => autoplayConfirmed,
+  resetIdle: () => {
+    idleTime = 0;
+  },
+  getUiScale: () => uiScale,
+  applyPreferenceUpdate,
+  applyPreferencesReset,
+});
 
 const setupUIScaling = () => {
   const urlParams = new URLSearchParams(window.location.search);
@@ -735,21 +354,10 @@ $(function () {
   if (PikaraokeConfig.showSplashClock) startClock();
   setupScreensaver();
   setupOverlayMenus();
-  setupVideoPlayer();
+  player.setupVideoPlayer();
   setupBackgroundMusicPlayer();
 
   // Handle browser compatibility
   handleUnsupportedBrowser();
   testAutoplayCapability();
 });
-
-
-// Setup sockets and recovery outside of document ready to prevent race conditions
-setupSocketEvents();
-handleSocketRecovery();
-
-// Fallback: if socket connected before listeners were attached, register now
-if (socket.connected) {
-  console.log('Socket already connected, registering splash...');
-  socket.emit("register_splash");
-}

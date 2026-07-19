@@ -5,6 +5,7 @@ _PKG = os.path.join(os.path.dirname(__file__), "..", "..", "pikaraoke")
 _SPLASH_JS = os.path.join(_PKG, "static", "js", "splash.js")
 _SUBS = os.path.join(_PKG, "static", "js", "modules", "subtitles.js")
 _AUDIO = os.path.join(_PKG, "static", "js", "modules", "audio-pipeline.js")
+_PLAYER_CORE = os.path.join(_PKG, "static", "js", "modules", "player-core.js")
 
 
 def _read(path):
@@ -18,10 +19,11 @@ def test_subtitles_module_owns_octopus():
     m = _read(_SUBS)
     assert re.search(r"^export function updateSubtitles\b", m, re.M)
     assert "new SubtitlesOctopus" in m
-    splash = _read(_SPLASH_JS)
-    assert "updateSubtitles(np, video, uiScale)" in splash
-    assert "new SubtitlesOctopus" not in splash
-    assert "let octopusInstance" not in splash
+    # the call site lives in player-core (slice 9); no octopus construction in splash/player-core.
+    pc = _read(_PLAYER_CORE)
+    assert "updateSubtitles(np, video, d.getUiScale())" in pc
+    assert "new SubtitlesOctopus" not in pc
+    assert "new SubtitlesOctopus" not in _read(_SPLASH_JS)
 
 
 def test_audio_pipeline_module_owns_hls():
@@ -31,8 +33,9 @@ def test_audio_pipeline_module_owns_hls():
     for name in ("setupHls", "destroyHls", "switchAudioTrack"):
         assert re.search(rf"^export function {name}\b", m, re.M), name
     assert "new Hls(" in m
-    splash = _read(_SPLASH_JS)
-    assert "setupHls(streamUrl, video," in splash
-    assert "switchAudioTrack(mode, getVideoPlayer())" in splash
-    assert "new Hls(" not in splash
-    assert "let hlsInstance" not in splash
+    # the call sites live in player-core (slice 9); no Hls construction in splash/player-core.
+    pc = _read(_PLAYER_CORE)
+    assert "setupHls(streamUrl, video, d.browser)" in pc
+    assert "switchAudioTrack(mode, d.getVideoPlayer())" in pc
+    assert "new Hls(" not in pc
+    assert "new Hls(" not in _read(_SPLASH_JS)

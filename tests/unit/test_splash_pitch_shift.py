@@ -29,10 +29,15 @@ def test_pitch_shift_module_exports_and_splash_imports():
     assert re.search(r"^export function resetPitchShift\b", mod, re.M)
     assert re.search(r"^export async function applyPitchShift\b", mod, re.M)
     splash = _read(_SPLASH_JS)
-    assert re.search(
-        r'import \{[^}]*\bresetPitchShift\b[^}]*\} from "/static/js/modules/pitch-shift\.js"', splash
-    )
     assert "initPitchShift({" in splash
+    assert re.search(
+        r'import \{[^}]*\binitPitchShift\b[^}]*\} from "/static/js/modules/pitch-shift\.js"', splash
+    )
+    # resetPitchShift/applyPitchShift are imported by player-core (slice 9), which uses them.
+    pc = _read(os.path.join(_PKG, "static", "js", "modules", "player-core.js"))
+    assert re.search(
+        r'import \{[^}]*\bresetPitchShift\b[^}]*\} from "/static/js/modules/pitch-shift\.js"', pc
+    )
 
 
 def test_pitch_shift_bypasses_worklet_at_zero_semitones():

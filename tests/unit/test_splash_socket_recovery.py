@@ -1,12 +1,13 @@
 import os
 
-_SPLASH_JS = os.path.join(
-    os.path.dirname(__file__), "..", "..", "pikaraoke", "static", "js", "splash.js"
+# setupSocketEvents moved into modules/player-core.js in slice 9.
+_PLAYER_CORE = os.path.join(
+    os.path.dirname(__file__), "..", "..", "pikaraoke", "static", "js", "modules", "player-core.js"
 )
 
 
 def _read():
-    with open(_SPLASH_JS, encoding="utf-8") as f:
+    with open(_PLAYER_CORE, encoding="utf-8") as f:
         return f.read()
 
 
