@@ -6,11 +6,12 @@ import { startScore, setScoreReviews } from "/static/score.js";
 import { initPitchShift, resetPitchShift, applyPitchShift } from "/static/js/modules/pitch-shift.js";
 import { formatTime, escapeHtml, flashNotification, startClock, stopClock, startSessionTimer } from "/static/js/modules/session-ui.js";
 import { createPreferences } from "/static/js/modules/preferences.js";
+import { updateSubtitles } from "/static/js/modules/subtitles.js";
+import { setupHls, destroyHls, switchAudioTrack } from "/static/js/modules/audio-pipeline.js";
 let socket = io();
 let mouseTimer = null;
 let cursorVisible = false;
 let nowPlaying = {};
-let octopusInstance = null;
 let showMenu = false;
 let menuButtonVisible = false;
 let autoplayConfirmed = false;
@@ -18,7 +19,6 @@ let volume = 0.85;
 const playbackStartTimeout = 10000;
 let isScoreShown = false;
 let currentVideoUrl = null;
-let hlsInstance = null;
 let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
 let isMaster = false;
@@ -163,10 +163,7 @@ const endSong = async (reason = null, showScore = false) => {
       }
     }, 1000);
   }
-  if (hlsInstance) {
-    hlsInstance.destroy();
-    hlsInstance = null;
-  }
+  destroyHls();
   const video = getVideoPlayer();
   video.pause();
   $("#video-source").attr("src", "");
@@ -250,50 +247,8 @@ const handleNowPlayingUpdate = (np) => {
 
   const video = getVideoPlayer();
 
-  // Setup ASS subtitle file if found (skip recreation if URL unchanged)
-  // After a mid-song re-seek (移調/切音軌 -> ffmpeg -ss start_position) the media is re-based
-  // so currentTime=0 == start_position into the song, but the ASS keeps absolute song times.
-  // Octopus renders at video.currentTime + timeOffset, so timeOffset = the seek base re-aligns
-  // subtitles for the rest of the song (0 for fresh plays and the HLS multi-audio instant switch).
-  const subtitleOffset = np.now_playing_subtitle_offset || 0;
-  const subtitleUrl = np.now_playing_subtitle_url;
-  if (subtitleUrl === window._currentSubtitleUrl && octopusInstance) {
-    // Same subtitle file — don't destroy/recreate (prevents stutter on audio switch). Still
-    // refresh the offset; SubtitlesOctopus reads octopusInstance.timeOffset live on each
-    // internal timeupdate, so updating it here re-aligns without a rebuild if the seek base changed.
-    octopusInstance.timeOffset = subtitleOffset;
-  } else {
-    if (octopusInstance) {
-      octopusInstance.dispose();
-      octopusInstance = null;
-    }
-    window._currentSubtitleUrl = subtitleUrl;
-  }
-  if (subtitleUrl && video && !octopusInstance) {
-    const options = {
-      video: video,
-      subUrl: subtitleUrl,
-      timeOffset: subtitleOffset,
-      fonts: ["/static/fonts/Arial.ttf", "/static/fonts/DroidSansFallback.ttf"],
-      renderMode: "wasm-blend",
-      targetFps: 60,
-      prescaleFactor: 1.5,
-      prescaleHeightLimit: 2160,
-      debug: false,
-      workerUrl: "/static/js/subtitles-octopus-worker.js"
-    };
-    try {
-      octopusInstance = new SubtitlesOctopus(options);
-      if (uiScale) {
-        // Find the canvas created by SubtitlesOctopus (sibling of the video)
-        const canvas = video.parentNode.querySelector('canvas');
-        if (canvas) {
-          canvas.style.transform = `scale(${uiScale})`;
-          canvas.style.transformOrigin = 'bottom center';
-        }
-      }
-    } catch (e) { console.error(e); }
-  }
+  // Subtitles (SubtitlesOctopus/libass) — owned by modules/subtitles.js.
+  updateSubtitles(np, video, uiScale);
 
   if (!np.now_playing_url) {
     $("#progress-bar-container").hide();
@@ -319,29 +274,7 @@ const handleNowPlayingUpdate = (np) => {
     $("#video-source").attr("src", streamUrl);
 
     if (streamUrl.endsWith('.m3u8')) {
-      const useNativeHLS = video.canPlayType('application/vnd.apple.mpegurl') && !isChrome && !isEdge && !isMobileSafari;
-      if (useNativeHLS) {
-        video.src = streamUrl;
-      } else {
-        if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-        hlsInstance = new Hls({ startPosition: 0 });
-
-        // Detect multi-audio tracks for instant switching
-        // FFmpeg names them audio_1/audio_2/audio_3 but order is deterministic:
-        // index 0 = original, 1 = instrumental, 2 = guide
-        hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, function() {
-          window.audioTrackMap = null;
-          if (hlsInstance.audioTracks && hlsInstance.audioTracks.length > 1) {
-            window.audioTrackMap = { "original": 0, "instrumental": 1 };
-            console.log("Multi-audio detected: " + hlsInstance.audioTracks.length + " tracks");
-            // Default to instrumental (karaoke mode)
-            hlsInstance.audioTrack = 1;
-          }
-        });
-
-        hlsInstance.loadSource(streamUrl);
-        hlsInstance.attachMedia(video);
-      }
+      setupHls(streamUrl, video, { isChrome, isEdge, isMobileSafari });
     }
 
     video.load();
@@ -713,25 +646,7 @@ const setupSocketEvents = () => {
   socket.on("pitch_shift", applyPitchShift);
 
   // Instant audio track switching (multi-audio HLS)
-  socket.on("audio_mode_switch", (mode) => {
-    if (!hlsInstance || !window.audioTrackMap) return;
-    var trackIndex = window.audioTrackMap[mode];
-    if (trackIndex !== undefined) {
-      hlsInstance.audioTrack = trackIndex;
-      // Force seeked event to re-enable SubtitlesOctopus timeupdate listener.
-      // HLS audio track switch triggers seeking but not always seeked,
-      // which permanently disables subtitle time sync.
-      var video = getVideoPlayer();
-      if (video) {
-        setTimeout(function() {
-          var pos = video.currentTime;
-          video.currentTime = pos + 0.001;
-          video.currentTime = pos;
-        }, 150);
-      }
-      console.log("Audio track switched to: " + mode + " (index " + trackIndex + ")");
-    }
-  });
+  socket.on("audio_mode_switch", (mode) => switchAudioTrack(mode, getVideoPlayer()));
 
   socket.on("session_summary", (data) => {
     $("#summary-songs").text(data.total_songs || 0);
