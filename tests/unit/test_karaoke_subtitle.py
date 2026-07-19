@@ -6,11 +6,27 @@ import os
 import re
 
 from pikaraoke.lib.karaoke_subtitle import (
+    _build_kf_text,
     _filter_whisper_hallucinations,
     _is_cjk_char,
     _split_cjk_word,
     generate_karaoke_ass,
 )
+
+
+class TestKfTextTraditionalConversion:
+    def test_converts_whole_word_not_per_char(self, monkeypatch):
+        """P1-5: OpenCC s2twp needs phrase context — 干杯 -> 乾杯 (correct) but per-char
+        干 -> 幹 (wrong, vulgar reading). Convert the whole word before splitting it into
+        karaoke chars, never each split CJK char in isolation."""
+        seen = []
+        monkeypatch.setattr(
+            "pikaraoke.lib.karaoke_subtitle._to_traditional_chinese",
+            lambda t: (seen.append(t), t)[1],
+        )
+        _build_kf_text([{"word": "干杯", "start": 0.0, "end": 1.0}], timing_offset=0.0)
+        assert "干杯" in seen, "the whole word must be converted with phrase context"
+        assert "干" not in seen and "杯" not in seen, "must not convert per split char"
 
 
 class TestIsCjkChar:
@@ -229,8 +245,12 @@ def test_no_negative_duration_active_lines_on_overlap():
     Start>End (which libass renders for zero frames -> the line silently vanishes)."""
     segments = [
         # seg0 occupies row active_y for ~6s
-        {"words": [{"word": c, "start": j * 0.6, "end": j * 0.6 + 0.6}
-                   for j, c in enumerate("一二三四五六七八九十")]},
+        {
+            "words": [
+                {"word": c, "start": j * 0.6, "end": j * 0.6 + 0.6}
+                for j, c in enumerate("一二三四五六七八九十")
+            ]
+        },
         {"words": [{"word": "甲", "start": 0.1, "end": 0.4}]},
         # seg2 lands on the same row (active_y) but is short + early -> used to get Start>End
         {"words": [{"word": "乙", "start": 0.2, "end": 0.5}]},
@@ -239,7 +259,9 @@ def test_no_negative_duration_active_lines_on_overlap():
     active = re.findall(r"^Dialogue:\s*\d+,([^,]+),([^,]+),Active,", ass, re.M)
     assert active, "expected Active dialogue lines"
     for start, end in active:
-        assert _ass_seconds(start) < _ass_seconds(end), f"negative/zero-duration Active line: {start} >= {end}"
+        assert _ass_seconds(start) < _ass_seconds(
+            end
+        ), f"negative/zero-duration Active line: {start} >= {end}"
 
 
 def _chorus_segs():
@@ -287,7 +309,8 @@ def test_aligned_path_keeps_5plus_repeat_chorus():
 
 def test_aligned_path_keeps_line_with_credit_keyword_substring():
     """An online lyric line containing a credit keyword as a substring (演唱) must survive on
-    the aligned path -- online lyrics are already credit-filtered upstream in _search_online_lyrics."""
+    the aligned path -- online lyrics are already credit-filtered upstream in _search_online_lyrics.
+    """
     segs = [{"text": "我演唱著我們的歌", "start": 0.0, "end": 3.0, "no_speech_prob": 0.0}]
     assert len(_filter_whisper_hallucinations(segs, online_aligned=True)) == 1
 
@@ -314,11 +337,18 @@ def test_aligned_path_still_drops_junk_punctuation_and_numbers():
 def test_preview_lead_capped_across_instrumental_gap():
     """A long instrumental gap must not freeze the gray preview line for tens of seconds."""
     segments = [
-        {"words": [{"word": c, "start": j * 0.5, "end": j * 0.5 + 0.5}
-                   for j, c in enumerate("第一行")]},
+        {
+            "words": [
+                {"word": c, "start": j * 0.5, "end": j * 0.5 + 0.5} for j, c in enumerate("第一行")
+            ]
+        },
         # next line starts 40s later (instrumental break)
-        {"words": [{"word": c, "start": 40.0 + j * 0.5, "end": 40.0 + j * 0.5 + 0.5}
-                   for j, c in enumerate("第二行")]},
+        {
+            "words": [
+                {"word": c, "start": 40.0 + j * 0.5, "end": 40.0 + j * 0.5 + 0.5}
+                for j, c in enumerate("第二行")
+            ]
+        },
     ]
     ass = generate_karaoke_ass(segments, timing_offset=0.0)
     previews = re.findall(r"^Dialogue:\s*\d+,([^,]+),([^,]+),Preview,", ass, re.M)
@@ -330,9 +360,17 @@ def test_preview_lead_capped_across_instrumental_gap():
 def test_preview_derives_text_from_words_when_text_key_absent():
     """A words-only segment (no 'text' key) must still produce a Preview line for the next row."""
     segments = [
-        {"words": [{"word": c, "start": j * 0.5, "end": j * 0.5 + 0.5} for j, c in enumerate("甲乙")]},
-        {"words": [{"word": c, "start": 2.0 + j * 0.5, "end": 2.0 + j * 0.5 + 0.5}
-                   for j, c in enumerate("丙丁")]},
+        {
+            "words": [
+                {"word": c, "start": j * 0.5, "end": j * 0.5 + 0.5} for j, c in enumerate("甲乙")
+            ]
+        },
+        {
+            "words": [
+                {"word": c, "start": 2.0 + j * 0.5, "end": 2.0 + j * 0.5 + 0.5}
+                for j, c in enumerate("丙丁")
+            ]
+        },
     ]
     ass = generate_karaoke_ass(segments, timing_offset=0.0)
     previews = re.findall(r"Preview,,0,0,0,,\{[^}]*\}(.+)", ass)
@@ -364,10 +402,17 @@ def test_no_negative_timestamps_with_default_offset():
     Start/End must stay >=0 and Start<End, or libass drops the opening lyric line(s)."""
     segments = [
         # first word at t=0 -> seg_start would be -0.7 under the default offset
-        {"words": [{"word": c, "start": j * 0.3, "end": j * 0.3 + 0.3}
-                   for j, c in enumerate("早安你好世界")]},
-        {"words": [{"word": c, "start": 2.0 + j * 0.3, "end": 2.0 + j * 0.3 + 0.3}
-                   for j, c in enumerate("第二行歌詞")]},
+        {
+            "words": [
+                {"word": c, "start": j * 0.3, "end": j * 0.3 + 0.3} for j, c in enumerate("早安你好世界")
+            ]
+        },
+        {
+            "words": [
+                {"word": c, "start": 2.0 + j * 0.3, "end": 2.0 + j * 0.3 + 0.3}
+                for j, c in enumerate("第二行歌詞")
+            ]
+        },
     ]
     ass = generate_karaoke_ass(segments)  # default timing_offset=-0.7
     times = re.findall(r"^Dialogue:\s*\d+,([^,]+),([^,]+),", ass, re.M)

@@ -85,9 +85,7 @@ def _is_cjk_char(ch: str) -> bool:
     )
 
 
-def _split_cjk_word(
-    word: str, start: float, end: float
-) -> list[tuple[str, float, float]]:
+def _split_cjk_word(word: str, start: float, end: float) -> list[tuple[str, float, float]]:
     """Split a CJK word into per-character timing.
 
     Each CJK character is roughly one syllable, so evenly distributing
@@ -104,10 +102,7 @@ def _split_cjk_word(
 
     duration = end - start
     char_dur = duration / len(chars)
-    return [
-        (ch, start + i * char_dur, start + (i + 1) * char_dur)
-        for i, ch in enumerate(chars)
-    ]
+    return [(ch, start + i * char_dur, start + (i + 1) * char_dur) for i, ch in enumerate(chars)]
 
 
 def _format_ass_time(seconds: float) -> str:
@@ -135,7 +130,9 @@ def _to_traditional_chinese(text: str) -> str:
         return text
 
 
-def _filter_whisper_hallucinations(segments: list[dict], online_aligned: bool = False) -> list[dict]:
+def _filter_whisper_hallucinations(
+    segments: list[dict], online_aligned: bool = False
+) -> list[dict]:
     """Filter out Whisper hallucinated segments (fake text during silence).
 
     Common hallucinations: repeated text, composer/lyricist credits,
@@ -204,9 +201,7 @@ def _filter_whisper_hallucinations(segments: list[dict], online_aligned: bool = 
     return filtered
 
 
-def _build_kf_text(
-    words: list[dict], timing_offset: float
-) -> tuple[str, float, float]:
+def _build_kf_text(words: list[dict], timing_offset: float) -> tuple[str, float, float]:
     """Build karaoke fill text from word-level timestamps.
 
     Returns (kf_tagged_text, seg_start, seg_end). No pre-display pad —
@@ -225,10 +220,14 @@ def _build_kf_text(
         w_start = word_info.get("start", 0.0) + timing_offset
         w_end = word_info.get("end", w_start + 0.1) + timing_offset
 
-        char_parts = _split_cjk_word(word, w_start, w_end)
+        # Convert the whole word (with phrase context) BEFORE splitting it into karaoke chars —
+        # OpenCC s2twp needs the surrounding characters to pick the right variant (干杯->乾杯,
+        # not the per-char 干->幹). s2twp preserves CJK character count, so per-char timing is
+        # unchanged; non-Chinese words pass through untouched.
+        word_tw = _to_traditional_chinese(word)
+        char_parts = _split_cjk_word(word_tw, w_start, w_end)
         for char_text, c_start, c_end in char_parts:
             dur_cs = max(int((c_end - c_start) * 100), 5)
-            char_text = _to_traditional_chinese(char_text)
             char_data.append((char_text, dur_cs))
 
     # Normalize outlier durations: cap too-long, floor too-short
