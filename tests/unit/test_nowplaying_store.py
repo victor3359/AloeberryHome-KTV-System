@@ -22,6 +22,17 @@ def test_base_html_bootstraps_store():
     assert "window.nowPlayingStore = nowPlayingStore;" in base
 
 
+def test_store_refetches_on_socket_reconnect():
+    """P1-9: the socket auto-reconnects after a phone sleeps/backgrounds. The store must
+    re-fetch /now_playing on 'connect' or it keeps showing the pre-sleep song until the next
+    state-change broadcast (position updates ride a separate event). splash.js already re-fetches
+    on connect; the store, advertised as the single source of truth for phone pages, must too."""
+    js = _read(_STORE)
+    assert 'socket.on("connect", refresh)' in js
+    # idempotent: off before on so re-subscribes don't stack duplicate connect handlers.
+    assert 'socket.off("connect", refresh)' in js
+
+
 _SONGPICKER = os.path.join(_PKG, "templates", "songpicker.html")
 
 

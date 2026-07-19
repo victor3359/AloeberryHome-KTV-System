@@ -33,6 +33,12 @@ function _wireSocket() {
   }
   socket.off("now_playing", _onNowPlaying);
   socket.on("now_playing", _onNowPlaying);
+  // Re-fetch on (re)connect: the socket silently auto-reconnects after a phone sleeps or
+  // backgrounds, and the server only broadcasts now_playing on state changes (position rides a
+  // separate event), so without this the store keeps serving the pre-sleep state until the next
+  // change. off-before-on keeps it idempotent across repeated subscribe() calls.
+  socket.off("connect", refresh);
+  socket.on("connect", refresh);
 }
 
 export function refresh() {
