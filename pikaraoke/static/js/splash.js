@@ -3,6 +3,7 @@ import { getBackgroundMusicPlayer, playBGMusic, playBGVideo, shouldBackgroundMed
 import { PitchAnalyzer } from "/static/js/pitch-analyzer.js";
 import { PitchMeter } from "/static/js/pitch-meter.js";
 import { startScore, setScoreReviews } from "/static/score.js";
+import { initPitchShift, resetPitchShift, applyPitchShift } from "/static/js/modules/pitch-shift.js";
 let socket = io();
 let mouseTimer = null;
 let cursorVisible = false;
@@ -16,7 +17,6 @@ const playbackStartTimeout = 10000;
 let isScoreShown = false;
 let currentVideoUrl = null;
 let hlsInstance = null;
-let _pitchShiftInitializing = false;
 let idleTime = 0;
 let screensaverTimeoutSeconds = PikaraokeConfig.screensaverTimeout;
 let isMaster = false;
@@ -47,6 +47,12 @@ initBgMedia({
   getNowPlaying: () => nowPlaying,
   getAutoplayConfirmed: () => autoplayConfirmed,
   isMediaPlaying,
+});
+
+// Inject the pitch-shift module's deps lazily (getVideoPlayer/flashNotification are defined below).
+initPitchShift({
+  getVideoPlayer: () => getVideoPlayer(),
+  flashNotification: (m, c) => flashNotification(m, c),
 });
 
 const formatElapsed = (s) => {
@@ -707,69 +713,6 @@ async function _initMicScoring(songFilePath) {
   }
 }
 
-// Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change).
-//
-// The graph is built ONCE and kept for the entire session. An HTMLMediaElement can be
-// captured by only one MediaElementSourceNode, and after that capture its audio is
-// permanently routed through the graph — closing the context (the old per-song cleanup)
-// left #video feeding a dead graph, muting every song after the first use of 升降Key.
-// At 0 semitones we bypass the worklet (source -> destination) so unshifted playback keeps
-// native latency; the worklet is spliced in only while actually shifting.
-async function _ensurePitchShiftGraph() {
-  if (window._pitchShiftCtx) return true;
-  if (_pitchShiftInitializing) return false;
-  _pitchShiftInitializing = true;
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    await ctx.audioWorklet.addModule("/static/js/soundtouch-worklet.js");
-    const source = ctx.createMediaElementSource(getVideoPlayer());
-    const node = new AudioWorkletNode(ctx, "soundtouch-processor");
-    source.connect(ctx.destination); // start bypassed: 0 semitones == native passthrough
-    window._pitchShiftCtx = ctx;
-    window._pitchShiftSource = source;
-    window._pitchShiftNode = node;
-    window._pitchShiftBypassed = true;
-    console.log("SoundTouch AudioWorklet initialized");
-    return true;
-  } catch (e) {
-    console.warn("SoundTouch AudioWorklet failed:", e);
-    flashNotification("此瀏覽器不支援即時升降 Key", "is-warning");
-    window._pitchShiftCtx = null;
-    return false;
-  } finally {
-    _pitchShiftInitializing = false;
-  }
-}
-
-// Splice the worklet in/out and set the pitch. Never tears down the capture.
-function _routePitchShift(semitones) {
-  const ctx = window._pitchShiftCtx;
-  const source = window._pitchShiftSource;
-  const node = window._pitchShiftNode;
-  if (!ctx || !source || !node) return;
-  if (semitones === 0) {
-    if (!window._pitchShiftBypassed) {
-      source.disconnect();
-      node.disconnect();
-      source.connect(ctx.destination);
-      window._pitchShiftBypassed = true;
-    }
-  } else {
-    if (window._pitchShiftBypassed) {
-      source.disconnect();
-      source.connect(node);
-      node.connect(ctx.destination);
-      window._pitchShiftBypassed = false;
-    }
-    node.parameters.get("pitchSemitones").value = semitones;
-  }
-}
-
-// Reset to native pitch on song change / endSong WITHOUT destroying the persistent graph.
-function resetPitchShift() {
-  _routePitchShift(0);
-}
-
 const setupSocketEvents = () => {
   // Idempotent: drop any handlers from a prior setup before (re)binding. handleSocketRecovery
   // re-invokes this on visibilitychange and io() returns the same multiplexed socket, so without
@@ -880,21 +823,7 @@ const setupSocketEvents = () => {
   });
 
   // Client-side pitch shift via SoundTouchJS AudioWorklet (no tempo change)
-  socket.on("pitch_shift", async (semitones) => {
-    if (!getVideoPlayer()) return;
-    if (semitones !== 0) {
-      // Build the persistent graph on first real shift; a 0 with no graph is a no-op.
-      if (!(await _ensurePitchShiftGraph())) return;
-    } else if (!window._pitchShiftCtx) {
-      return;
-    }
-    // Resume context if suspended (requires user interaction)
-    if (window._pitchShiftCtx.state === "suspended") {
-      await window._pitchShiftCtx.resume();
-    }
-    _routePitchShift(semitones);
-    console.log("Pitch shift: " + semitones + " semitones (SoundTouch, no tempo change)");
-  });
+  socket.on("pitch_shift", applyPitchShift);
 
   // Instant audio track switching (multi-audio HLS)
   socket.on("audio_mode_switch", (mode) => {
