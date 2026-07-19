@@ -46,14 +46,15 @@ def test_no_classic_helper_reads_a_bare_splash_global():
     assert re.search(r"(?<!window\.)\bscoreReviews\b", fireworks) is None
 
 
-def test_pitch_helpers_only_window_attach_their_classes():
-    """pitch-analyzer.js / pitch-meter.js publish their classes on window; splash reads them as
-    bare names, which resolves in module scope because window properties are global. Lock this
-    direction so a future slice converting these to ES modules removes the window leak knowingly."""
+def test_pitch_helpers_export_their_classes_and_drop_the_window_leak():
+    """Slice 4 converted the pitch helpers to ES modules: they now export their class and no
+    longer attach it to window; splash imports them. Lock the new direction."""
     pa = _read(_PITCH_ANALYZER)
     pm = _read(_PITCH_METER)
-    assert "window.PitchAnalyzer" in pa
-    assert "window.PitchMeter" in pm
+    assert "export class PitchAnalyzer" in pa
+    assert "export class PitchMeter" in pm
+    assert "window.PitchAnalyzer" not in pa
+    assert "window.PitchMeter" not in pm
 
 
 def test_screensaver_import_specifier_is_the_static_path():

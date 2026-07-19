@@ -8,7 +8,7 @@
  *   analyzer.stop();
  */
 
-class PitchAnalyzer {
+export class PitchAnalyzer {
   constructor(audioContext, stream) {
     this.audioContext = audioContext;
     this.stream = stream;
@@ -159,9 +159,4 @@ class PitchAnalyzer {
     if (f1 <= 0 || f2 <= 0) return Infinity;
     return 1200 * Math.log2(f1 / f2);
   }
-}
-
-// Export for use in splash.js
-if (typeof window !== "undefined") {
-  window.PitchAnalyzer = PitchAnalyzer;
 }

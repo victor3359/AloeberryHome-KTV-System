@@ -8,7 +8,7 @@
  *   meter.getScore(); // 0-100
  */
 
-class PitchMeter {
+export class PitchMeter {
   constructor(container) {
     this.container = container;
     this.matchedFrames = 0;
@@ -139,8 +139,4 @@ class PitchMeter {
     const indicator = document.getElementById("pitch-indicator");
     if (indicator) indicator.style.bottom = "50%";
   }
-}
-
-if (typeof window !== "undefined") {
-  window.PitchMeter = PitchMeter;
 }

@@ -1,5 +1,7 @@
 import { startScreensaver, stopScreensaver } from "/static/screensaver.js";
 import { getBackgroundMusicPlayer, playBGMusic, playBGVideo, shouldBackgroundMediaPlay, updateBackgroundMediaState, setupBackgroundMusicPlayer, initBgMedia } from "/static/js/modules/bg-media.js";
+import { PitchAnalyzer } from "/static/js/pitch-analyzer.js";
+import { PitchMeter } from "/static/js/pitch-meter.js";
 let socket = io();
 let mouseTimer = null;
 let cursorVisible = false;
@@ -418,7 +420,7 @@ const handleNowPlayingUpdate = (np) => {
     });
 
     // Initialize mic-based pitch scoring (if not disabled)
-    if (!PikaraokeConfig.disableScore && typeof PitchAnalyzer !== "undefined") {
+    if (!PikaraokeConfig.disableScore) {
       _initMicScoring(np.now_playing_filename || "");
     }
 
