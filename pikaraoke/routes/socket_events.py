@@ -2,6 +2,7 @@
 
 import logging
 import threading
+import uuid
 
 from flask import request
 
@@ -12,6 +13,11 @@ _splash_lock = threading.Lock()
 splash_connections = set()
 master_splash_id = None
 
+# Per-boot id announced to every connecting client. The living-room splash/remote pages are
+# long-lived; after a server restart (code update) they would keep running stale JavaScript.
+# Clients remember the first id they see and reload the page when a different one arrives.
+SERVER_STARTUP_ID = uuid.uuid4().hex
+
 
 def setup_socket_events(socketio):
     """Register Socket.IO event handlers.
@@ -19,6 +25,11 @@ def setup_socket_events(socketio):
     Args:
         socketio: The SocketIO instance.
     """
+
+    @socketio.on("connect")
+    def on_connect() -> None:
+        """Announce the server boot id so stale pages can detect a restart and reload."""
+        socketio.emit("server_hello", SERVER_STARTUP_ID, to=request.sid)
 
     @socketio.on("end_song")
     def end_song(reason: str) -> None:

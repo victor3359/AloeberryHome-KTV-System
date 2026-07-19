@@ -15,6 +15,17 @@
     }
     if (!_socket) {
       _socket = io();
+      // Server-restart handshake: the server announces a per-boot id on connect. This page is
+      // long-lived (living-room remote left open for days); when the id changes the server was
+      // restarted — likely with updated code — so reload to shed stale JavaScript. The shared
+      // window state keeps a same-boot reconnect (wifi blip) from ever looking like a restart.
+      _socket.on("server_hello", function (id) {
+        if (window.__pikaraokeServerId === undefined) {
+          window.__pikaraokeServerId = id;
+        } else if (window.__pikaraokeServerId !== id) {
+          window.location.reload();
+        }
+      });
     }
     return _socket;
   }

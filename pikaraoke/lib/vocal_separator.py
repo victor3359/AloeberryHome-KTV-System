@@ -602,6 +602,9 @@ class VocalSeparator:
                     # ASS that is then served forever.
                     _atomic_write_text(ass_path, ass_content)
                     logging.info("Karaoke ASS generated: %s", ass_path)
+                    # The song may already be playing (download-and-sing flow); let karaoke
+                    # hot-attach the subtitle URL to the current play.
+                    self._events.emit("subtitles_ready", song_path)
 
                     # Step 3: Extract reference pitch curve for scoring
                     self._events.emit("processing_progress", {"stage": "提取參考音高", "percent": 96})

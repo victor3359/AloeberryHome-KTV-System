@@ -269,6 +269,17 @@ const setupSocketEvents = () => {
   // second register_splash from the same sid makes the server reply 'slave', demoting the only TV
   // so it stops emitting end_song and the queue stalls when a song finishes.
   socket.off();
+  // Server-restart handshake: bound here (not socketClient) because this off()/rebind cycle
+  // would drop a listener attached anywhere else on the shared socket. A changed per-boot id
+  // means the server restarted — likely with updated code — so the long-lived TV page reloads
+  // itself instead of running stale JavaScript all night.
+  socket.on("server_hello", (id) => {
+    if (window.__pikaraokeServerId === undefined) {
+      window.__pikaraokeServerId = id;
+    } else if (window.__pikaraokeServerId !== id) {
+      window.location.reload();
+    }
+  });
   socket.on("connect", () => {
     console.log("Socket connected");
     socket.emit("register_splash");

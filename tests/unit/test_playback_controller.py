@@ -338,3 +338,41 @@ class TestPlaybackControllerResetNowPlaying:
         assert pc.now_playing_user is None
         assert pc.is_playing is False
         assert pc.is_paused is True
+
+
+class TestAttachSubtitles:
+    """Mid-song subtitle hot-attach: when the AI pipeline finishes an ASS while the song is
+    already playing (download-and-sing-immediately), the play must not stay subtitle-less until
+    the next play. attach_subtitles() flips now_playing_subtitle_url so a now_playing push makes
+    the splash pick it up; /subtitle/<uid> re-resolves the file on request, so the URL works the
+    moment the file exists."""
+
+    def _pc(self, test_prefs):
+        events = EventSystem()
+        return PlaybackController(test_prefs, events, lambda x, remove_youtube_id=True: x)
+
+    def test_attaches_for_currently_playing_song(self, test_prefs):
+        pc = self._pc(test_prefs)
+        pc.now_playing_filename = "C:/songs/song.mp4"
+        pc.now_playing_url = "/stream/12345678901_master.m3u8"
+        pc.now_playing_subtitle_url = None
+        assert pc.attach_subtitles("C:/songs/song.mp4") is True
+        assert pc.now_playing_subtitle_url == "/subtitle/12345678901"
+
+    def test_no_attach_for_other_song_or_idle(self, test_prefs):
+        pc = self._pc(test_prefs)
+        pc.now_playing_filename = "C:/songs/other.mp4"
+        pc.now_playing_url = "/stream/999.m3u8"
+        assert pc.attach_subtitles("C:/songs/song.mp4") is False
+        assert pc.now_playing_subtitle_url is None
+        pc2 = self._pc(test_prefs)
+        assert pc2.attach_subtitles("C:/songs/song.mp4") is False
+
+    def test_idempotent_when_already_attached(self, test_prefs):
+        pc = self._pc(test_prefs)
+        pc.now_playing_filename = "C:/songs/song.mp4"
+        pc.now_playing_url = "/stream/42.m3u8"
+        pc.now_playing_subtitle_url = "/subtitle/42"
+        # already attached: no re-push needed
+        assert pc.attach_subtitles("C:/songs/song.mp4") is False
+        assert pc.now_playing_subtitle_url == "/subtitle/42"

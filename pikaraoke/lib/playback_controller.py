@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from typing import TYPE_CHECKING, Callable
@@ -245,6 +246,25 @@ class PlaybackController:
                 "supports_multi_audio": self.supports_multi_audio,
                 "is_paused": self.is_paused,
             }
+
+    def attach_subtitles(self, song_path: str) -> bool:
+        """Attach a just-generated karaoke ASS to the current playback, mid-song.
+
+        The download-and-sing flow can start a play before the AI pipeline finishes its ASS;
+        that play would stay subtitle-less until the next one. /subtitle/<uid> re-resolves the
+        file on every request, so once the file exists the URL only needs to be announced.
+        Returns True when the caller should push a now_playing update.
+        """
+        with self._lock:
+            if self.now_playing_filename != song_path or not self.now_playing_url:
+                return False
+            if self.now_playing_subtitle_url:
+                return False
+            match = re.search(r"/stream/(\d+)", self.now_playing_url)
+            if not match:
+                return False
+            self.now_playing_subtitle_url = f"/subtitle/{match.group(1)}"
+            return True
 
     def reset_now_playing(self) -> None:
         """Reset all now playing state to defaults."""

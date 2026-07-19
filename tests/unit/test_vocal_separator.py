@@ -982,3 +982,57 @@ class TestLanguageOverride:
         separator.transcribe(song, language="en'); import os; os.system('pwned') #")
         assert "os.system('pwned')" not in captured["script"]
         assert "import os; os.system" not in captured["script"]
+
+
+class TestSubtitlesReadyEvent:
+    """Hot-attach: after the ASS lands on disk, process() must emit subtitles_ready(song_path)
+    so karaoke can attach subtitles to an already-playing song (download-and-sing flow: the play
+    that started before generation finished stays subtitle-less otherwise)."""
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", False)
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_emits_subtitles_ready_after_ass_written(self, separator, events, tmp_path):
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+        fake_segments = [
+            {
+                "start": 0,
+                "end": 3,
+                "text": "Hello",
+                "words": [{"word": "Hello", "start": 0, "end": 3}],
+                "no_speech_prob": 0.0,
+            }
+        ]
+        seen = []
+        # Capture whether the ASS already exists at emit time (must: URL is served on push).
+        events.on(
+            "subtitles_ready",
+            lambda path: seen.append((path, os.path.exists(_ass_path_for(path)))),
+        )
+        with patch.object(
+            separator,
+            "transcribe",
+            return_value=TranscriptionResult(success=True, segments=fake_segments, language="en"),
+        ):
+            with patch("pikaraoke.lib.vocal_separator._search_online_lyrics", return_value=None):
+                with patch(
+                    "pikaraoke.lib.pitch_extractor.extract_pitch",
+                    side_effect=ImportError("nope"),
+                ):
+                    separator.process(song, title="Song")
+
+        assert seen == [(song, True)]
+
+    @patch("pikaraoke.lib.vocal_separator.DEMUCS_AVAILABLE", False)
+    @patch("pikaraoke.lib.vocal_separator.WHISPER_AVAILABLE", True)
+    def test_no_event_when_ass_reused(self, separator, events, tmp_path):
+        """Reusing an existing ASS is not a fresh generation — the current play (if any) already
+        got its subtitle URL at play_file time; no push needed."""
+        song = str(tmp_path / "Song.mp4")
+        open(song, "w").close()
+        with open(_ass_path_for(song), "w", encoding="utf-8") as f:
+            f.write("[Events]\nDialogue: existing")
+        seen = []
+        events.on("subtitles_ready", lambda path: seen.append(path))
+        separator.process(song, title="Song")
+        assert seen == []

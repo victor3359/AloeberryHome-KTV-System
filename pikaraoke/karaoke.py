@@ -248,6 +248,7 @@ class Karaoke:
         self.events.on("playback_started", self.update_now_playing_socket)
         self.events.on("song_ended", self.update_now_playing_socket)
         self.events.on("skip_requested", lambda: self.playback_controller.skip(False))
+        self.events.on("subtitles_ready", self.on_subtitles_ready)
 
         # Session state (protected by _session_lock for thread safety)
         self._session_lock = threading.RLock()
@@ -611,6 +612,12 @@ class Karaoke:
         """Emit now_playing state change via SocketIO."""
         if self.socketio:
             self.socketio.emit("now_playing", self.get_now_playing(), namespace="/")
+
+    def on_subtitles_ready(self, song_path: str) -> None:
+        """Hot-attach a freshly generated ASS to the song if it is playing right now."""
+        if self.playback_controller.attach_subtitles(song_path):
+            logging.info("Subtitles hot-attached to current song: %s", song_path)
+            self.update_now_playing_socket()
 
     def run(self) -> None:
         """Main run loop - processes queue and plays songs.
