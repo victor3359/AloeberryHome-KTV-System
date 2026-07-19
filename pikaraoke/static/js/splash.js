@@ -761,6 +761,12 @@ function resetPitchShift() {
 }
 
 const setupSocketEvents = () => {
+  // Idempotent: drop any handlers from a prior setup before (re)binding. handleSocketRecovery
+  // re-invokes this on visibilitychange and io() returns the same multiplexed socket, so without
+  // this every handler — including 'connect' -> register_splash — would stack a duplicate. The
+  // second register_splash from the same sid makes the server reply 'slave', demoting the only TV
+  // so it stops emitting end_song and the queue stalls when a song finishes.
+  socket.off();
   socket.on('connect', () => {
     console.log('Socket connected');
     socket.emit("register_splash");
