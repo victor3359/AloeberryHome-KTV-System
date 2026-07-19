@@ -310,27 +310,11 @@
   });
   {% endif %}
 
-  // Socket listeners
-  window.socket.off("queue_update"); window.socket.on("queue_update", window.queuePage_getQueue);
-  window.nowPlayingStore.subscribe("queueview", onNowPlaying);
-  window.socket.off("download_started"); window.socket.on("download_started", function() { if (!window.downloadPollTimer) window.queuePage_getDownloads(); });
-  window.socket.off("download_stopped"); window.socket.on("download_stopped", function() { if (window.downloadPollTimer) { clearTimeout(window.downloadPollTimer); window.downloadPollTimer = null; } window.queuePage_getDownloads(); });
-  window.socket.off("separation_started"); window.socket.on("separation_started", function() {
-    $("#processing-status").show();
-  });
-  window.socket.off("separation_complete"); window.socket.on("separation_complete", function() {
-    setTimeout(function() { $("#processing-status").fadeOut(); }, 5000);
-  });
-  window.socket.off("processing_progress"); window.socket.on("processing_progress", function(data) {
-    if (!data) return;
-    window._lastProcessingProgress = data;  // Persist across page switches
-    _renderProcessingProgress(data);
-  });
-  // Restore progress after SPA page switch
-  if (window._lastProcessingProgress && window._lastProcessingProgress.percent < 100) {
-    _renderProcessingProgress(window._lastProcessingProgress);
-  }
-
+  // _renderProcessingProgress is a hoisted declaration (safe at parse time). The socket
+  // bindings and the store subscription that USE it are registered inside $(function) below:
+  // window.nowPlayingStore is assigned by base.html's deferred <script type="module">, which
+  // runs AFTER parse-time classic scripts, so a top-level subscribe would throw on a hard load
+  // of /queue (the phone landing page) and kill the rest of this script.
   function _renderProcessingProgress(data) {
     var stage = data.stage || "";
     var pct = data.percent || 0;
@@ -349,10 +333,33 @@
       setTimeout(function() { $("#processing-status").fadeOut(); }, 5000);
     }
   }
-  window.queuePageState.previousQueue = null;
-  window.queuePageState.previousNowPlaying = null;
 
   $(function() {
+    window.queuePageState.previousQueue = null;
+    window.queuePageState.previousNowPlaying = null;
+
+    // Socket listeners — registered after DOM ready so window.nowPlayingStore (assigned by
+    // base.html's deferred module) is defined; .off/.on keeps them idempotent across SPA nav.
+    window.socket.off("queue_update"); window.socket.on("queue_update", window.queuePage_getQueue);
+    window.nowPlayingStore.subscribe("queueview", onNowPlaying);
+    window.socket.off("download_started"); window.socket.on("download_started", function() { if (!window.downloadPollTimer) window.queuePage_getDownloads(); });
+    window.socket.off("download_stopped"); window.socket.on("download_stopped", function() { if (window.downloadPollTimer) { clearTimeout(window.downloadPollTimer); window.downloadPollTimer = null; } window.queuePage_getDownloads(); });
+    window.socket.off("separation_started"); window.socket.on("separation_started", function() {
+      $("#processing-status").show();
+    });
+    window.socket.off("separation_complete"); window.socket.on("separation_complete", function() {
+      setTimeout(function() { $("#processing-status").fadeOut(); }, 5000);
+    });
+    window.socket.off("processing_progress"); window.socket.on("processing_progress", function(data) {
+      if (!data) return;
+      window._lastProcessingProgress = data;  // Persist across page switches
+      _renderProcessingProgress(data);
+    });
+    // Restore progress after SPA page switch
+    if (window._lastProcessingProgress && window._lastProcessingProgress.percent < 100) {
+      _renderProcessingProgress(window._lastProcessingProgress);
+    }
+
     window.queuePage_getDownloads();
     window.queuePage_getQueue();
     $('.modal-background').click(function() { window.closeSongOptions(); window.closeNowPlayingOptions(); });
